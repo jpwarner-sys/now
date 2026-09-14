@@ -1,0 +1,67 @@
+# NOW
+
+A one-screen daily surface. Five routes — **NOW**, **CARDS**, **FLOOR**, **STUCK**, and a DUMP bar that is always in reach.
+
+Live: **https://jpwarner-sys.github.io/now/**
+
+One HTML file, no build step, no dependencies, no analytics, no network calls except the two you opt into (below). Read `index.html` top to bottom in a few minutes — that is the entire app.
+
+## What it does
+
+**NOW** — one card, one thing. FIRST picks it; the card says *why* it picked it. Start runs a 25-minute timer; Done deletes it and counts it. Beneath: four status strips (raw, done, cards, floor) and a lanes row.
+
+**CARDS** — decisions waiting on you, one at a time, with a recommendation and the reason it needs a person. A tap writes one decision record.
+
+**FLOOR** — six vectors, 1–5, tap what you know and skip what you don't. Untouched logs as ABSENT, never as 0. The chip is computed on the device from what is set; only the reading is stored.
+
+**STUCK** — one next physical step, or break a big thing into stages.
+
+**DUMP** — tap to send a thought out and forget it; hold to keep it as a start until Done.
+
+## The rules it enforces
+
+- **02:00–05:59 goes dark.** No writes, no list, no ask. From 23:00 a cutoff lamp shows amber at 90 minutes and red at 30. A lamp, not a clock.
+- **A red floor goes dark too.** State C (Redline) blanks the screen rather than asking anything of you.
+- **Status is a lamp, never a sentence.** Tap a lamp to get the sentence.
+- **The dump text is never stored.** A dump leaves a receipt — byte count, hash, readback — and nothing else.
+
+## FIRST
+
+Open items are scored: shorter wins (14 words, 8 when the floor reads Low battery), an imperative physical verb wins big, older breaks ties, a question is penalised. A port of the same chooser that runs in `joeos-core/ops.py`, verb list and weights intact.
+
+## The floor matrix
+
+Six vectors resolve to one state: **C** Redline · **A** High drive, low control · **B** Low battery · **!** Tripwire · **D** Full house, thin buffer · **E** Flow · **F** Steady · **—** Incomplete. Energy or control at 2 or below is a tripwire on its own — an average cannot see that, which is why this is a matrix and not a mean.
+
+## Storage
+
+`localStorage` on the device. Six collections — items, cards, decisions, floor, receipts, counters — plus a held-dump queue. It survives reload and offline. It does not sync between devices, and nothing is sent anywhere.
+
+## The raw door (optional)
+
+Off by default and shipped with no credentials — **this repo is public and carries no account, folder or client identifiers.**
+
+To turn it on, open **STUCK → Raw door** and paste two values, both kept on the device and never sent anywhere but Google:
+
+1. An **OAuth client ID** — Google Cloud Console → Credentials → OAuth client ID → Web application, with `https://<your-user>.github.io` as an authorised JavaScript origin.
+2. A **Drive folder ID** — the last segment of the destination folder's Drive URL.
+
+Then sign in. DUMP writes one `raw_*.md` file into that folder with a small YAML header, reads the stored size back, and keeps a receipt. Scope requested is `drive.file`, which only ever grants access to files this app itself creates.
+
+Without those two values every dump queues on the device and the raw lamp stays red. Nothing is lost; the next dump retries the queue.
+
+## Install
+
+Open the live URL in Safari → Share → **Add to Home Screen**. Standalone, dark status bar, its own icon.
+
+## Layout
+
+```
+index.html                 the whole app
+manifest.webmanifest       standalone display, icons
+icon.svg  icon-192.png  icon-512.png  icon-512-maskable.png  apple-touch-icon.png
+```
+
+## Licence
+
+Personal project, no licence granted. Read it, learn from it, don't ship it as yours.
