@@ -1,9 +1,10 @@
 {
+  "id": "/now/",
   "name": "NOW",
   "short_name": "NOW",
   "description": "Dump. Now. Floor. Cards. Stuck.",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/now/",
+  "scope": "/now/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#05070a",
