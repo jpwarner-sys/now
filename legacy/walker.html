@@ -1,0 +1,446 @@
+<title>Walker</title>
+<style>
+:root{
+  --bg:#0b0f13; --card:#12171d; --well:#0c1014; --edge:#202833; --edge2:#2b3542;
+  --ink:#e8eef4; --ink2:#a3afbb; --ink3:#6b7784; --dim:#4a5461;
+  --acc:#5be49b; --accDim:#1c4a34; --accBg:#0f1f18;
+  --warn:#d7b06a; --warnEdge:#5a4a2a; --bad:#e4705c;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:#05070a;color:var(--ink);font-family:var(--sans);font-size:19px;line-height:1.4;min-height:100%}
+body{padding:0 16px;padding-block:0}
+.phone{max-width:430px;height:100dvh;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
+@media (min-width:480px){.phone{height:calc(100dvh - 32px);margin:16px auto;border:1px solid var(--edge);border-radius:28px;overflow:hidden}}
+.status{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:calc(5px + env(safe-area-inset-top)) 14px 2px;font-family:var(--mono);font-size:13px;font-weight:600;white-space:nowrap;color:var(--ink3);letter-spacing:.14em;text-transform:uppercase}
+.screen{flex:1;padding:6px 14px 0;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden}
+#nowBody{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
+#r-now.on{overflow:hidden}
+#queueCard{flex:1 1 0;min-height:104px;display:flex;flex-direction:column;overflow:hidden}
+#queue{overflow-y:auto;min-height:0;overscroll-behavior:contain;padding-bottom:4px}
+.more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent)}
+#nowBody .card.first{flex:2 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;overflow-y:auto;overscroll-behavior:contain}
+#nowBody .card.first.more{justify-content:flex-start}
+#nowBody .fill{flex:0 0 auto}
+.fill{display:grid;grid-template-columns:max-content 1fr;column-gap:0;align-items:baseline}
+.fill>.strip>.k,.fill>.strip>.v{padding-top:10px}
+.fill>.strip:not(:first-child)>.k,.fill>.strip:not(:first-child)>.v{border-top:1px solid var(--edge)}
+.fill>.strip>.age{padding-bottom:9px}
+.fill>.strip>.age:empty{padding:0 0 9px}
+
+.route{display:none;flex-direction:column;gap:12px;flex:1;min-height:0}
+.route.on{display:flex;overflow-y:auto;overscroll-behavior:contain}
+.tag{font-family:var(--mono);font-size:14px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase}
+.tag.acc{color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:16px 18px}
+.card.first{border-color:var(--accDim);background:linear-gradient(180deg,var(--accBg),var(--card))}
+.first h2{font-size:26.5px;line-height:1.25;margin:6px 0 4px;font-weight:700;letter-spacing:-.01em;text-wrap:balance;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
+.first h2.long{font-size:21.5px;line-height:1.3;-webkit-line-clamp:4}
+.first .why{color:var(--ink2);font-size:17.5px}
+.row{display:flex;align-items:center;gap:10px}
+.row.between{justify-content:space-between}
+.act{display:flex;gap:10px;margin-top:12px}
+.strip{display:contents}
+.strip .k{grid-column:1;font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.16em;color:var(--ink2);text-transform:uppercase;align-self:baseline;padding-right:14px}
+.strip .v{grid-column:2;color:var(--ink);font-size:18px;overflow-wrap:anywhere;align-self:baseline}
+.strip .age{grid-column:2;font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.strip .age:empty{display:none}
+.btn{appearance:none;border:1.5px solid var(--edge2);background:var(--well);color:var(--ink);font:inherit;font-weight:600;font-size:19px;line-height:1;padding:11px 14px 13px;border-radius:14px;min-height:54px;cursor:pointer;flex:1;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#04120b}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink2)}
+.btn.sm{min-height:44px;padding:7px 12px 9px;font-size:17px;flex:none}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,textarea:focus-visible,input:focus-visible,.seg span:focus-visible,.tab:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.stamp{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.stamp b{color:var(--ink3);font-weight:600}
+.lamps{display:flex;gap:14px;align-items:center;flex:none}
+.ver{color:var(--ink3);letter-spacing:.04em;flex:none}
+.lamp{display:inline-flex;gap:7px;align-items:center;background:none;border:0;padding:4px 2px;cursor:pointer;font:inherit;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);line-height:1}
+.lamp .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none;box-shadow:0 0 0 0 transparent}
+.lamp.ok .dot{background:var(--acc);box-shadow:0 0 6px var(--accDim)}
+.lamp.warn .dot{background:var(--warn)}
+.lamp.bad .dot{background:var(--bad)}
+.lamp.bad .lb,.lamp.warn .lb{color:var(--ink2)}
+.banner{font-family:var(--mono);font-size:14px;letter-spacing:.03em;color:var(--ink2);background:var(--well);border:1px solid var(--edge);border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center}.banner .n{white-space:nowrap;flex:none}
+.banner.stale{border-color:var(--warnEdge);color:var(--warn)}
+.dump{margin-top:auto;padding:8px 14px 6px;display:flex;flex-direction:column;gap:7px}
+.btn.land{width:100%;min-height:46px;padding:9px 14px 11px;font-size:20.5px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}.btn.land.hold{background:var(--well);color:var(--acc);border-color:var(--acc)}
+.dump textarea{width:100%;background:var(--well);border:1.5px solid var(--edge2);border-radius:14px;color:var(--ink);font:inherit;font-size:20.5px;text-align:center;padding:10px 16px 11px;min-height:53px;max-height:200px;resize:none;outline:none}
+.dump textarea:focus{border-color:var(--acc)}
+.dump textarea::placeholder{text-align:center}
+.dump .held{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.tabbar{display:flex;justify-content:space-around;padding:4px 4px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--bg)}
+.tab{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:.06em;color:var(--ink3);text-align:center;padding:4px 10px 5px;border-radius:10px;min-width:66px;background:none;border:0;cursor:pointer;line-height:1}
+.tab.on{color:var(--acc);background:var(--accBg)}
+.tab .g{display:block;margin:0 auto 3px;line-height:0;color:inherit}
+.tab.on .g{filter:drop-shadow(0 0 5px var(--accDim))}
+.toast{position:fixed;left:50%;transform:translateX(-50%);width:min(398px,calc(100vw - 32px));bottom:110px;background:var(--card);border:1px solid var(--accDim);border-radius:12px;padding:12px 14px;font-size:17.5px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:5}
+.toast .u{font-family:var(--mono);font-size:14.5px;color:var(--acc);letter-spacing:.1em;background:none;border:0;cursor:pointer;padding:5px 8px 7px;line-height:1}
+.toast[hidden]{display:none}
+.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--ink3)}
+.list{display:flex;flex-direction:column}
+.item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--edge)}
+.item:first-child{border-top:0}
+.item .t{flex:1;font-size:18px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.item .t.done{color:var(--ink3);text-decoration:line-through}
+.item .s{font-family:var(--mono);font-size:13.5px;color:var(--dim);text-align:right;flex:none;line-height:1.4;font-variant-numeric:tabular-nums}
+.item .s.ok{color:var(--acc)}
+.item .mini{display:flex;gap:6px;flex:none}
+.chipbtn{font-family:var(--mono);font-size:13.5px;letter-spacing:.08em;border:1px solid var(--edge2);background:var(--well);color:var(--ink2);border-radius:9px;padding:5px 9px 7px;line-height:1;cursor:pointer;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+.chipbtn.acc{border-color:var(--accDim);color:var(--acc)}
+.timer{font-family:var(--mono);font-size:41px;font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--ink);line-height:1}
+.timer.over{color:var(--warn)}
+.deck{position:relative;margin-top:10px}
+.deck .c{border-radius:16px}
+.deck .c3{position:absolute;left:12px;right:12px;top:-10px;height:100%;background:var(--well);border:1px solid var(--edge);z-index:0}
+.deck .c2{position:absolute;left:6px;right:6px;top:-5px;height:100%;background:var(--card);border:1px solid var(--edge);z-index:1}
+.deck .c1{position:relative;z-index:2}
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.deck h3{font-size:24px;line-height:1.25;margin:8px 0 6px;font-weight:700;letter-spacing:-.01em;text-wrap:balance;overflow-wrap:anywhere}
+.rec{font-size:17.5px;color:var(--ink2);overflow-wrap:anywhere}
+.rec b{color:var(--ink)}
+.because{font-family:var(--mono);font-size:13.5px;color:var(--dim);margin-top:8px;letter-spacing:.04em}
+.because b{color:var(--ink3)}
+.ans{display:flex;gap:8px;margin-top:12px}
+.park{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--edge);font-size:16px;color:var(--ink2)}
+.park:first-of-type{border-top:0}
+.vec{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--edge)}
+.vec:first-child{border-top:0}
+.vec .nm{font-family:var(--mono);font-size:14px;letter-spacing:.1em;color:var(--ink3);text-transform:uppercase;width:100px;flex:none}
+.seg{display:flex;flex:1;gap:4px}
+.seg span{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center;padding-bottom:2px;line-height:1;border:1.5px dashed var(--edge2);border-radius:10px;font-family:var(--mono);font-size:17px;color:var(--ink3);cursor:pointer;user-select:none}
+.seg span.set{border-style:solid;color:var(--ink2)}
+.seg span.on{background:var(--accBg);border:1.5px solid var(--acc);color:var(--acc);font-weight:700}
+.absent{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em}
+.chipbox{display:flex;align-items:center;gap:14px}
+.chipbox .st{font-family:var(--mono);font-size:36px;font-weight:700;color:var(--acc);width:44px;text-align:center;flex:none}
+.chipbox .line{font-size:17.5px;color:var(--ink2)}
+.ask{display:flex;flex-direction:column;gap:10px}
+.answer{font-size:20.5px;line-height:1.4;min-height:24px;overflow-wrap:anywhere}
+.answer.muted{font-size:17.5px}
+.stages{display:flex;flex-direction:column}
+.stage{padding:10px 0;border-top:1px solid var(--edge);display:flex;gap:10px;align-items:flex-start}
+.stage:first-child{border-top:0}
+.stage .no{font-family:var(--mono);font-size:13.5px;color:var(--ink3);width:20px;flex:none;padding-top:3px}
+.stage .b{flex:1}
+.stage .b .h{font-weight:600;font-size:18px}
+.stage .b .f{color:var(--ink2);font-size:17px}
+.dark .card,.dark .tabbar .tab:not(.on){opacity:.55}
+.darknote{text-align:center;padding:40px 12px 20px;color:var(--ink2);font-size:18px}
+.darknote .big{font-family:var(--mono);font-size:14.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:10px}
+.sr{position:absolute;left:-9999px}
+@media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}to{transform:translate(-50%,0);opacity:1}}}
+</style>
+
+<div class="phone" id="phone">
+  <div class="status"><span id="clock" class="ver">Walker 0.5</span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button></span></div>
+
+  <div class="screen">
+
+    <!-- NOW -->
+    <section class="route on" id="r-now" aria-label="Now">
+      <div id="nowDark" class="darknote" hidden>
+        <div class="big">Dark until 06:00 ET</div>
+        The box works. Nothing else tonight.
+      </div>
+      <div id="nowBody">
+        <div class="card first" id="firstCard">
+          <div class="tag acc" id="firstTag">First</div>
+          <h2 id="firstText">Nothing waiting. Type one thing.</h2>
+          <div class="why" id="firstWhy">Dump sends it to raw and forgets it. Hold to keep it here until Done.</div>
+          <div class="row between" id="timerRow" hidden>
+            <div class="timer" id="timer">25:00</div>
+            <div class="mini">
+              <button class="chipbtn" id="tPlus">+5</button>
+              <button class="chipbtn" id="tPause">pause</button>
+            </div>
+          </div>
+          <div class="act" id="firstActs"></div>
+        </div>
+        <div class="card fill" style="padding:6px 16px">
+          <div class="strip"><span class="k">Raw</span><span class="v" id="sLanded">—</span><span class="age" id="sLandedAge"></span></div>
+          <div class="strip"><span class="k">Done</span><span class="v" id="sDone">—</span><span class="age">today</span></div>
+          <div class="strip"><span class="k">Cards</span><span class="v" id="sCards">—</span><span class="age" id="sCardsAge"></span></div>
+          <div class="strip"><span class="k">Floor</span><span class="v" id="sFloor">—</span><span class="age" id="sFloorAge"></span></div>
+        </div>
+        <div class="card" style="padding:6px 16px" id="queueCard">
+          <div class="tag" style="padding:8px 0 4px">Starts waiting · oldest first</div>
+          <div class="list" id="queue"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARDS -->
+    <section class="route" id="r-cards" aria-label="Cards">
+      <div class="deck" id="deck"></div>
+      <div class="card" style="padding:6px 16px" id="parkedCard">
+        <div class="tag" style="padding:8px 0 4px">Parked · returns only on a new fact</div>
+        <div id="parkedList"></div>
+      </div>
+      <div class="card" style="padding:6px 16px" id="decidedCard">
+        <div class="tag" style="padding:8px 0 4px">Decided · what your taps wrote</div>
+        <div id="decidedList"></div>
+      </div>
+    </section>
+
+    <!-- FLOOR -->
+    <section class="route" id="r-floor" aria-label="Floor">
+      <div class="row between"><span class="tag">Floor · tonight</span><span class="stamp" id="floorLast">last logged <b>never</b></span></div>
+      <div class="card" style="padding:6px 16px" id="vectors"></div>
+      <div class="card">
+        <div class="chipbox"><span class="st" id="chip">·</span><span class="line" id="chipLine">Six untouched. Tap a number in each row; skip what you don't know.</span></div>
+        <div class="stamp" style="margin-top:8px">computed on this phone from what is set · the chip is never stored, only the reading is</div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="logFloor">Log it</button>
+        <button class="btn sm" id="sameFloor">Same as last</button>
+      </div>
+      <div class="card" style="padding:6px 16px">
+        <div class="tag" style="padding:8px 0 4px">Recent readings</div>
+        <div id="floorHist"></div>
+      </div>
+    </section>
+
+    <!-- STUCK -->
+    <section class="route" id="r-stuck" aria-label="Stuck">
+      <div class="row between"><span class="tag">Stuck</span><span class="stamp" id="stuckOn">on: nothing started</span></div>
+      <div class="card ask">
+        <div class="tag">One next step</div>
+        <div class="answer muted" id="stepOut">Ask for the one physical thing to do next — twelve words or fewer. It knows what you started and how the floor read tonight.</div>
+        <div class="row">
+          <button class="btn primary" id="askStep">Next step</button>
+          <button class="btn sm" id="stepToDump" hidden>Dump it</button>
+        </div>
+      </div>
+      <div class="card ask">
+        <div class="tag">Break it down</div>
+        <div class="answer muted" id="stagesOut">Pick a big start from the list (tap ▤ next to it), then break it into stages. Each stage becomes its own start; the big one is parked.</div>
+        <div class="stages" id="stages"></div>
+        <div class="row">
+          <button class="btn" id="askStages" disabled>Break it down</button>
+          <button class="btn sm primary" id="landStages" hidden>Land these</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="dump">
+    <button class="btn primary land" id="dumpGo">DUMP</button>
+    <label class="sr" for="dumpBox">Garbage or Gold?</label>
+    <textarea id="dumpBox" rows="1" placeholder="Garbage or Gold?" enterkeyhint="done"></textarea>
+    <div class="held" id="heldRow" hidden><span id="heldNote"></span></div>
+  </div>
+
+  <nav class="tabbar" aria-label="Routes">
+    <button class="tab on" data-r="now"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg></span>NOW</button>
+    <button class="tab" data-r="cards"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3.5" width="13.5" height="15" rx="2.5"/><path d="M16.5 20.5H6a2.5 2.5 0 0 1-2.5-2.5V7.5"/></svg></span>CARDS</button>
+    <button class="tab" data-r="floor"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V13"/><path d="M9.3 20V8.5"/><path d="M14.7 20v-6"/><path d="M20 20V4.5"/></svg></span>FLOOR</button>
+    <button class="tab" data-r="stuck"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12h9"/><path d="M9 8l4 4-4 4"/><path d="M17.5 3.5v17"/><path d="M21 6v12"/></svg></span>STUCK</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast" hidden><span id="toastText"></span><button class="u" id="toastUndo">UNDO · 3</button></div>
+
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const VECTORS=["family","energy","recharge","balance","harmony","control"];
+const FMT_T=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hour12:false});
+const FMT_D=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",day:"2-digit",month:"short"});
+const FMT_H=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",hour12:false});
+const etHour=d=>parseInt(FMT_H.format(d||new Date()),10)%24;
+const etTime=d=>FMT_T.format(d);
+const etDay=d=>{const p=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);return p;};
+const nowIso=()=>new Date().toISOString();
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const ago=iso=>{if(!iso)return"";const s=(Date.now()-Date.parse(iso))/1e3;if(s<60)return"now";if(s<3600)return Math.floor(s/60)+" m";if(s<86400)return Math.floor(s/3600)+" h";return Math.floor(s/86400)+" d";};
+const words=s=>s.trim().split(/\s+/).filter(Boolean).length;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---------- state (memory first; db when it resolves) ----------
+const S={items:{},cards:{},decisions:{},floor:{},receipts:{},counters:{},route:"now",bigPick:null,stages:null};
+let db=null,sample=null,mcp=null,dbState="memory";
+const FEEDS_FOLDER="REDACTED_FEEDS_FOLDER_ID"; /* the live Drive folder id is redacted for this public repo — see RECONCILIATION.md */
+const COLS=["items","cards","decisions","floor","receipts","counters"];
+const col=name=>db?db.collection(name):null;
+
+function cache(){try{localStorage.setItem("walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
+function uncache(){try{const j=JSON.parse(localStorage.getItem("walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
+
+async function put(kind,id,data){S[kind][id]=Object.assign({},S[kind][id]||{},data,{id});cache();render();const c=col(kind);if(c){try{await c.doc(id).set(S[kind][id]);}catch(e){note("write failed · "+(e&&e.code||"?"));lamp("lampStore","bad","Store write failed · "+(e&&e.code||"?")+" — kept on this phone; reload when the store is back.");}}}
+async function del(kind,id){delete S[kind][id];cache();render();const c=col(kind);if(c){try{await c.doc(id).delete();}catch(e){}}}
+function subscribe(){for(const k of COLS){let first=true;col(k).onSnapshot(snap=>{const next={};snap.docs.forEach(d=>{next[d.id]=Object.assign({id:d.id},d.data());});if(first){first=false;for(const id in S[k]){if(!next[id]){next[id]=S[k][id];col(k).doc(id).set(S[k][id]).catch(()=>{});}}}S[k]=next;cache();render();},e=>note("store · "+(e.code||"error")));}}
+
+// ---------- rendering ----------
+function items(){return Object.values(S.items).sort((a,b)=>(a.at||"").localeCompare(b.at||""));}
+function active(){return items().find(i=>i.state==="started")||null;}
+function landed(){return items().filter(i=>i.state==="landed");}
+function latestFloor(){return Object.values(S.floor).sort((a,b)=>(b.at||"").localeCompare(a.at||""))[0]||null;}
+function chipFor(v){const set=VECTORS.map(k=>v[k]).filter(x=>typeof x==="number");if(!set.length)return{st:"·",line:"Six untouched. Tap a number in each row; skip what you don't know.",red:false};const avg=set.reduce((a,b)=>a+b,0)/set.length;const low=Math.min(...set);let st,line;if(low<=1||avg<2){st="R";line="Red. The walker goes dark. Dump and rest; nothing is owed tonight.";}else if(avg<3){st="L";line="Low. Protect the evening. One small thing at most.";}else if(avg<4){st="F";line="Baseline. Ordinary evening; nothing to protect, nothing to push.";}else{st="H";line="High. Good night to start the thing you've been carrying.";}return{st,line,red:st==="R",n:set.length};}
+function isDark(){const h=etHour();if(h>=2&&h<6)return"night";const f=latestFloor();if(f&&f.at&&(Date.now()-Date.parse(f.at))<12*3600e3&&chipFor(f.v||{}).red)return"red";return null;}
+
+let timerT=null,timerEnd=null,timerLeft=null,paused=false;
+function fmtT(ms){const s=Math.max(0,Math.round(ms/1e3));const m=Math.floor(s/60),r=s%60;return (m<10?"0":"")+m+":"+(r<10?"0":"")+r;}
+function tickTimer(){const a=active();const el=$("timer");if(!a){$("timerRow").hidden=true;return;}$("timerRow").hidden=false;if(paused){el.textContent=fmtT(timerLeft);return;}const left=(a.timer_end?Date.parse(a.timer_end):0)-Date.now();el.textContent=left<=0?"-"+fmtT(-left):fmtT(left);el.classList.toggle("over",left<=0);}
+setInterval(tickTimer,500);
+let lastDark=null;setInterval(()=>{const d=isDark();if(d!==lastDark){lastDark=d;render();}},30000);
+
+function render(){
+  const dark=isDark();document.getElementById("phone").classList.toggle("dark",!!dark);
+  $("nowDark").hidden=!dark;$("nowBody").hidden=!!dark;
+  if(dark==="red"){$("nowDark").innerHTML='<div class="big">Red floor</div>The box works. Log the floor again when it changes.';}
+  else if(dark==="night"){$("nowDark").innerHTML='<div class="big">Dark until 06:00 ET</div>The box works. Nothing else tonight.';}
+  // first card
+  const a=active(),q=landed();
+  const acts=$("firstActs");acts.innerHTML="";
+  if(a){$("firstTag").textContent="Started · "+ago(a.started_at)+" ago";$("firstText").textContent=a.text;$("firstText").className=a.text.length>64?"long":"";$("firstWhy").textContent="Do only this. Done writes the time; Not now puts it back.";
+    acts.append(btn("Done","primary",()=>finish(a)),btn("Not now","",()=>put("items",a.id,{state:"landed",timer_end:null,started_at:null})));}
+  else if(q.length){const o=q[0];$("firstTag").textContent="Start this?";$("firstText").textContent=o.text;$("firstText").className=o.text.length>64?"long":"";$("firstWhy").textContent=(words(o.text)>12?"That's "+words(o.text)+" words — break it down under STUCK, or start it as is.":"Oldest thing waiting · landed "+ago(o.at)+" ago.");
+    acts.append(btn("Start · 25m","primary",()=>start(o)),btn("Not today","",()=>put("items",o.id,{state:"parked"})));}
+  else{$("firstTag").textContent="First";$("firstText").textContent="Nothing waiting. Type one thing.";$("firstText").className="";$("firstWhy").textContent="Dump sends it to raw and forgets it. Hold to keep it here until Done.";}
+  tickTimer();
+  // strips
+  const today=etDay(new Date());
+  const rc=Object.values(S.receipts).filter(r=>r.at&&etDay(new Date(r.at))===today);const held=heldQ().length;
+  $("sLanded").textContent=(rc.length?rc.length+" to raw today":"none to raw today")+(held?" · "+held+" queued":"");$("sLandedAge").textContent=rc.length?ago(rc.sort((x,y)=>(y.at||"").localeCompare(x.at||""))[0].at):"";
+  const dn=(S.counters[today]||{}).done||0;$("sDone").textContent=dn?dn+" done":"nothing yet";
+  const open=Object.values(S.cards).filter(c=>c.state==="open");$("sCards").textContent=open.length?open.length+" waiting":"none waiting";$("sCardsAge").textContent=open.length?"oldest "+ago(open.sort((x,y)=>(x.at||"").localeCompare(y.at||""))[0].at):"";
+  const f=latestFloor();if(f){const c=chipFor(f.v||{});$("sFloor").textContent="last check "+etTime(new Date(f.at))+" ET · "+c.st+" from "+c.n+" of 6";$("sFloorAge").textContent=ago(f.at);}else{$("sFloor").textContent="never logged";$("sFloorAge").textContent="";}
+  // queue
+  const ql=$("queue");ql.innerHTML="";q.slice(0,8).forEach(i=>{const d=document.createElement("div");d.className="item";d.innerHTML='<div class="t">'+esc(i.text)+'</div>';const mini=document.createElement("div");mini.className="mini";const big=document.createElement("button");big.className="chipbtn"+(S.bigPick===i.id?" acc":"");big.textContent="▤";big.title="Break it down";big.onclick=()=>{S.bigPick=i.id;go("stuck");};const st=document.createElement("button");st.className="chipbtn acc";st.textContent="▶";st.title="Start";st.onclick=()=>start(i);mini.append(big,st);d.append(mini);const s=document.createElement("div");s.className="s";s.innerHTML="landed<br>"+esc(etTime(new Date(i.at)))+" ET";d.append(s);ql.append(d);});
+  if(q.length>8){const m=document.createElement("div");m.className="item";m.innerHTML='<div class="t muted">…and '+(q.length-8)+' more, oldest first</div>';ql.append(m);}
+  $("queueCard").hidden=!q.length;
+  renderCards();renderFloor();renderStuck();
+}
+function btn(label,cls,fn){const b=document.createElement("button");b.className="btn "+cls;b.textContent=label;b.onclick=fn;return b;}
+async function start(o){const cur=active();if(cur)await put("items",cur.id,{state:"landed",timer_end:null,started_at:null});paused=false;await put("items",o.id,{state:"started",started_at:nowIso(),timer_end:new Date(Date.now()+25*60e3).toISOString()});go("now");}
+async function finish(a){const day=etDay(new Date());const c=S.counters[day]||{day,done:0};const keep=Object.assign({},a);await del("items",a.id);await put("counters",day,{day,done:(c.done||0)+1});toast("Done. "+a.text.slice(0,40),async()=>{await put("items",keep.id,Object.assign({},keep,{state:"started",timer_end:new Date(Date.now()+5*60e3).toISOString()}));await put("counters",day,{day,done:Math.max(0,(S.counters[day]||{}).done-1||0)});});}
+$("tPlus").onclick=()=>{const a=active();if(!a)return;const base=paused?Date.now()+timerLeft:Math.max(Date.now(),Date.parse(a.timer_end||0));paused=false;put("items",a.id,{timer_end:new Date(base+5*60e3).toISOString()});};
+$("tPause").onclick=()=>{const a=active();if(!a)return;if(!paused){timerLeft=Date.parse(a.timer_end||0)-Date.now();paused=true;$("tPause").textContent="resume";}else{paused=false;$("tPause").textContent="pause";put("items",a.id,{timer_end:new Date(Date.now()+timerLeft).toISOString()});}};
+
+// cards
+function renderCards(){const open=Object.values(S.cards).filter(c=>c.state==="open").sort((x,y)=>(x.at||"").localeCompare(y.at||""));const deck=$("deck");deck.innerHTML="";
+  if(open.length){const c=open[0];const opts=(c.options&&c.options.length?c.options:["Yes","No"]);deck.innerHTML=(open.length>2?'<div class="c c3"></div>':'')+(open.length>1?'<div class="c c2"></div>':'')+'<div class="card first c c1"><div class="hd"><span class="tag acc">Card 1 of '+open.length+'</span><span class="stamp">waited <b>'+esc(ago(c.at))+'</b></span></div><h3>'+esc(c.q)+'</h3><div class="rec">'+(c.rec?'Recommendation: <b>'+esc(c.rec)+'</b>':'')+'</div><div class="because">'+(c.because?'needs you because: <b>'+esc(c.because)+'</b> · ':'')+'card: '+esc(c.id)+'</div><div class="ans" id="ans"></div></div>';
+    const ans=deck.querySelector("#ans");opts.forEach((o,i)=>ans.append(btn(o,i===0?"primary":"",()=>decide(c,o))));ans.append(btn("Park","ghost sm",()=>put("cards",c.id,{state:"parked"})));}
+  else deck.innerHTML='<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">Chief lands cards here. A tap writes one decision file Chief reads at its next turn.</div></div>';
+  const parked=Object.values(S.cards).filter(c=>c.state==="parked");$("parkedCard").hidden=!parked.length;$("parkedList").innerHTML=parked.map(c=>'<div class="park"><span>'+esc(c.q)+'</span><span class="n">'+esc(ago(c.at))+'</span></div>').join("");
+  const dec=Object.values(S.decisions).sort((x,y)=>(y.at||"").localeCompare(x.at||"")).slice(0,6);$("decidedCard").hidden=!dec.length;$("decidedList").innerHTML=dec.map(d=>'<div class="park"><span>'+esc((S.cards[d.card]||{}).q||d.card)+' → <b>'+esc(d.decision)+'</b></span><span class="n">'+esc(etTime(new Date(d.at)))+'</span></div>').join("");}
+async function decide(c,o){const live=S.cards[c.id];if(!live||live.state!=="open")return;const id=nowIso().replace(/[-:.]/g,"").slice(0,18)+"_"+c.id;S.cards[c.id].state="answering";await put("decisions",id,{card:c.id,decision:o,at:nowIso(),vessel:"joe",surface:"walker",origin:"joe-word",joe_word:o});await put("cards",c.id,{state:"answered",answered:o});toast("Wrote: "+o,()=>{put("cards",c.id,{state:"open",answered:null});delete S.decisions[id];cache();render();const cc=col("decisions");if(cc)cc.doc(id).delete().catch(()=>{});});}
+
+// floor
+const draft={};
+function renderFloor(){const v=$("vectors");if(!v.dataset.built){v.innerHTML=VECTORS.map(k=>'<div class="vec"><span class="nm">'+k+'</span><div class="seg" data-k="'+k+'">'+[1,2,3,4,5].map(n=>'<span tabindex="0" data-n="'+n+'">'+n+'</span>').join("")+'</div></div>').join("")+'<div class="absent" style="padding:8px 0 6px" id="absentNote"></div>';v.dataset.built="1";v.querySelectorAll(".seg span").forEach(s=>{const f=()=>{const k=s.parentNode.dataset.k,n=+s.dataset.n;draft[k]=draft[k]===n?null:n;renderFloor();};s.onclick=f;s.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();f();}};});}
+  v.querySelectorAll(".seg").forEach(seg=>{const k=seg.dataset.k;seg.querySelectorAll("span").forEach(s=>{s.classList.toggle("on",draft[k]===+s.dataset.n);s.classList.toggle("set",typeof draft[k]==="number");});});
+  const absent=VECTORS.filter(k=>typeof draft[k]!=="number");$("absentNote").textContent=absent.length?absent.join(", ")+" untouched — logs as ABSENT, never 0":"all six set";
+  const c=chipFor(draft);$("chip").textContent=c.st;$("chipLine").textContent=c.line;
+  const f=latestFloor();$("floorLast").innerHTML="last logged <b>"+(f?esc(etTime(new Date(f.at)))+" ET · "+esc(ago(f.at)):"never")+"</b>";$("sameFloor").disabled=!f;
+  const hist=Object.values(S.floor).sort((x,y)=>(y.at||"").localeCompare(x.at||"")).slice(0,5);$("floorHist").innerHTML=hist.length?hist.map(r=>'<div class="park"><span class="n">'+VECTORS.map(k=>typeof r.v[k]==="number"?r.v[k]:"·").join(" ")+'</span><span class="n">'+esc(FMT_D.format(new Date(r.at)))+' '+esc(etTime(new Date(r.at)))+'</span></div>').join(""):'<div class="park"><span class="muted">none yet</span></div>';}
+$("logFloor").onclick=async()=>{const v={};VECTORS.forEach(k=>v[k]=typeof draft[k]==="number"?draft[k]:null);if(!Object.values(v).some(x=>typeof x==="number")){note("nothing set");return;}const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("floor",id,{at:nowIso(),v});VECTORS.forEach(k=>delete draft[k]);toast("Logged the floor.",()=>{delete S.floor[id];cache();render();const c=col("floor");if(c)c.doc(id).delete().catch(()=>{});});renderFloor();};
+$("sameFloor").onclick=()=>{const f=latestFloor();if(!f)return;VECTORS.forEach(k=>draft[k]=typeof f.v[k]==="number"?f.v[k]:null);renderFloor();};
+
+// stuck
+function renderStuck(){const a=active();const pick=S.bigPick?S.items[S.bigPick]:null;$("stuckOn").textContent="on: "+(a?a.text.slice(0,32):"nothing started");$("askStep").disabled=!sample;$("askStages").disabled=!sample||!pick;
+  if(!sample){$("stepOut").textContent="Asking needs the page opened from claude.ai (it asks Claude directly, and asks your permission first).";$("stepOut").classList.add("muted");}
+  if(pick){$("stagesOut").textContent="Breaking down: "+pick.text;$("stagesOut").classList.remove("muted");}}
+let stepCtl=null;
+$("askStep").onclick=async()=>{if(!sample)return;const a=active()||landed()[0];const f=latestFloor();if(stepCtl)stepCtl.abort();stepCtl=new AbortController();const out=$("stepOut");out.classList.remove("muted");out.textContent="Thinking…";$("stepToDump").hidden=true;
+  const prompt="You are the STUCK route of a one-person daily walker app. Reply with exactly ONE physical next step, twelve words or fewer, imperative, no preamble, no options, no quotes. It must be something the person can start within a minute with their hands. Never invent names of people."+(a?"\nThe thing they are on: "+a.text:"\nNothing is started; the oldest waiting item is: "+(landed()[0]||{}).text)+(f?"\nTonight's floor reading (1 low – 5 high; null = not logged): "+JSON.stringify(f.v):"")+"\nRecent done today: "+items().filter(i=>i.state==="done").slice(-3).map(i=>i.text).join(" | ");
+  try{const r=await sample(prompt,{modelTier:"quick",signal:stepCtl.signal,onText:u=>{out.textContent=u.text;}});out.textContent=r.text.trim();$("stepToDump").hidden=false;$("stepToDump").onclick=()=>land(r.text.trim());}
+  catch(e){if(e&&e.code==="cancelled")return;out.textContent=e&&e.code==="not_granted"?"You said no to asking. Fine — the box still works.":"Couldn't ask right now"+(e&&e.code?" ("+e.code+")":"")+".";out.classList.add("muted");}};
+$("askStages").onclick=async()=>{if(!sample)return;const pick=S.items[S.bigPick];if(!pick)return;const out=$("stagesOut");out.textContent="Breaking it down…";$("stages").innerHTML="";$("landStages").hidden=true;
+  try{const r=await sample.json('Break this one-person project into 3 to 6 stages. Return ONLY JSON: {"stages":[{"title":"<=8 words","first_step":"<=12 words, physical, startable in a minute"}]}. No names of people. Project: '+pick.text,{modelTier:"default"});S.stages=(r&&r.stages||[]).slice(0,6);out.textContent="Stages for: "+pick.text;$("stages").innerHTML=S.stages.map((s,i)=>'<div class="stage"><span class="no">'+(i+1)+'</span><div class="b"><div class="h">'+esc(s.title)+'</div><div class="f">'+esc(s.first_step)+'</div></div></div>').join("");$("landStages").hidden=!S.stages.length;}
+  catch(e){out.textContent=e&&e.code==="not_granted"?"You said no to asking.":"Couldn't break it down"+(e&&e.code?" ("+e.code+")":"")+".";}};
+$("landStages").onclick=async()=>{const pick=S.items[S.bigPick];if(!pick||!S.stages)return;const n=S.stages.length;for(const s of S.stages){await land(s.first_step+" — "+s.title,pick.id);}await put("items",pick.id,{state:"parked",broken_down:true});S.bigPick=null;S.stages=null;$("stages").innerHTML="";$("landStages").hidden=true;$("stagesOut").textContent="Landed "+n+" stages as starts; the big one is parked.";go("now");};
+
+// raw door — RAW_SHAPE_v1 exactly as 6_APP/Code.gs buildRawBody_ writes it; the page keeps a receipt, never the text
+const HELD_KEY="walker.held";
+function heldQ(){try{return JSON.parse(localStorage.getItem(HELD_KEY)||"[]");}catch(e){return[];}}
+function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(e){}renderHeld();try{render();}catch(e){}}
+function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · tries at next DUMP":"";
+  if(q.length)lamp("lampDoor",mcp?"warn":"bad",q.length+(q.length>1?" dumps":" dump")+" waiting on this phone — the next DUMP tries them again");else if(mcp)lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
+async function sha256(s){const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest("SHA-256",b);return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("");}
+function rawStamp(d){const p=n=>String(n).padStart(2,"0");return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+"T"+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds());}
+async function rawBody(text){const asOf=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");const hash=await sha256(text);const bytes=new TextEncoder().encode(text).length;return {hash,bytes,body:"---\nschema: \"lab.intake.raw/v1\"\nas_of: \""+asOf+"\"\nsource_hash: \""+hash+"\"\nbytes: "+bytes+"\nsanitizer: \"STEWARD\"\nvessel_read_restriction: \"STEWARD only (R-050)\"\norigin_surface: \"walker_v0\"\ntruncated: false\n---\n"+text+"\n"};}
+async function landRaw(text,atIso){if(!mcp)throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
+  const r=await mcp.callTool("Google Drive","create_file",{title:name,parentId:FEEDS_FOLDER,contentMimeType:"text/plain",disableConversionToGoogleType:true,textContent:body},{cache:false});
+  let f=r&&r.payload;if(!f&&r&&r.content&&r.content[0]&&r.content[0].text){try{f=JSON.parse(r.content[0].text);}catch(e){f=null;}}
+  const size=f&&f.fileSize?parseInt(f.fileSize,10):null;const ok=size===total;
+  await put("receipts",name.replace(/\.md$/,""),{at:new Date().toISOString(),name,bytes,sha:hash,file_bytes:size,file_id:f&&f.id||null,readback:ok?"ok":"size mismatch"});
+  return {name,bytes,total,size,ok};}
+async function flushHeld(){const q=heldQ();if(!q.length||!mcp)return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at);}catch(e){rest.push(h);}}heldSet(rest);}
+async function dumpRaw(t){try{const r=await landRaw(t);renderHeld();toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));}
+  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);toast(e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");}}
+
+// starts (the walker's only prose; deleted at Done)
+async function land(text,parent){text=(text||"").trim();if(!text)return;const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("items",id,{text,at:nowIso(),state:"landed",words:words(text),parent:parent||null});return id;}
+async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const h={text:t,at:new Date().toISOString(),k:uid()};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
+  if(!mcp){toast("No door right now — queued on this phone.");return;}
+  let r=null;try{r=await landRaw(h.text,h.at);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){toast(e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");return;}
+  toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));flushHeld();}
+async function startGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;box.value="";box.style.height="";const id=await land(t);toast("Start waiting. "+t.slice(0,32)+(t.length>32?"…":""),()=>del("items",id));await flushHeld();try{await landRaw(t);}catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);}}
+// one button: tap = Land, hold = Start
+(function(){const b=$("dumpGo");let t=null,held=false,down=false;const arm=()=>{held=true;b.classList.add("hold");b.textContent="START";if(navigator.vibrate)navigator.vibrate(12);};const reset=()=>{clearTimeout(t);t=null;down=false;held=false;b.classList.remove("hold");b.textContent="DUMP";};
+b.oncontextmenu=e=>{e.preventDefault();return false;};
+b.onpointerdown=e=>{if(e.button&&e.button!==0)return;down=true;held=false;clearTimeout(t);t=setTimeout(arm,550);};
+b.onpointerup=e=>{if(!down)return;const h=held;reset();if(h)startGo();else dumpGo();};
+b.onpointercancel=reset;b.onpointerleave=e=>{if(down&&!held)reset();};
+b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();dumpGo();}};})();
+$("dumpBox").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();dumpGo();}});
+$("dumpBox").addEventListener("input",e=>{e.target.style.height="auto";e.target.style.height=Math.min(160,e.target.scrollHeight)+"px";});
+
+// toast / undo
+let toastT=null,undoFn=null,undoLeft=3;
+function toast(text,undo){$("toastText").textContent=text;undoFn=undo;undoLeft=3;$("toastUndo").textContent="UNDO · 3";$("toastUndo").hidden=!undo;$("toast").hidden=false;clearInterval(toastT);toastT=setInterval(()=>{undoLeft--;if(undoLeft<=0){clearInterval(toastT);$("toast").hidden=true;undoFn=null;}else $("toastUndo").textContent="UNDO · "+undoLeft;},1000);}
+$("toastUndo").onclick=()=>{if(undoFn)undoFn();clearInterval(toastT);$("toast").hidden=true;undoFn=null;};
+function lamp(id,state,msg){const el=$(id);el.className="lamp "+state;el.dataset.msg=msg;}
+$("lampStore").onclick=()=>toast($("lampStore").dataset.msg||"store");
+$("lampDoor").onclick=()=>toast($("lampDoor").dataset.msg||"door");
+
+// routes
+function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("walker.route",r);}catch(e){}}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
+
+// boot
+function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("walker.route")||"now";}catch(e){}go(r);
+  if(window.claude&&window.claude.use){window.claude.use("db").then(d=>{if(d){db=d;dbState="db";lamp("lampStore","ok","Store live — walker_v0 is keeping your starts, cards and receipts.");subscribe();}else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");}});
+    window.claude.use("sample").then(s=>{sample=s;render();});
+    window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}
+  else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}
+}
+// home-screen install: standalone chrome, dark status bar, an icon drawn here
+(function(){try{
+  const head=document.head;const meta=(n,c,prop)=>{const m=document.createElement("meta");m.setAttribute(prop||"name",n);m.content=c;head.appendChild(m);};
+  meta("apple-mobile-web-app-capable","yes");
+  meta("mobile-web-app-capable","yes");
+  meta("apple-mobile-web-app-status-bar-style","black-translucent");
+  meta("apple-mobile-web-app-title","Walker");
+  meta("theme-color","#0b0f13");
+  const c=document.createElement("canvas");c.width=c.height=180;const g=c.getContext("2d");
+  g.fillStyle="#0b0f13";g.fillRect(0,0,180,180);
+  g.strokeStyle="#5be49b";g.lineWidth=9;g.beginPath();g.arc(90,90,52,0,6.284);g.stroke();
+  g.fillStyle="#5be49b";g.beginPath();g.arc(90,90,20,0,6.284);g.fill();
+  const url=c.toDataURL("image/png");
+  const l=document.createElement("link");l.rel="apple-touch-icon";l.href=url;head.appendChild(l);
+  const l2=document.createElement("link");l2.rel="icon";l2.type="image/png";l2.href=url;head.appendChild(l2);
+  const man={name:"Walker",short_name:"Walker",display:"standalone",background_color:"#05070a",theme_color:"#0b0f13",
+             start_url:location.pathname+location.search,scope:location.pathname,
+             icons:[{src:url,sizes:"180x180",type:"image/png",purpose:"any"}]};
+  const l3=document.createElement("link");l3.rel="manifest";
+  l3.href=URL.createObjectURL(new Blob([JSON.stringify(man)],{type:"application/manifest+json"}));head.appendChild(l3);
+}catch(e){}})();
+
+// sections keep their frame; what is too tall scrolls inside it, with a fade when there is more
+function fades(){[["firstCard",0],["queue",1]].forEach(([id,keep])=>{const el=$(id);if(!el)return;
+  const over=el.scrollHeight-el.clientHeight>2;el.classList.toggle("more",over);if(!keep&&!over)el.scrollTop=0;});}
+const _render=render;render=function(){_render.apply(this,arguments);$("firstCard").scrollTop=0;requestAnimationFrame(fades);};
+window.addEventListener("resize",()=>requestAnimationFrame(fades));
+if(window.claude&&window.claude.hot&&window.claude.hot.snapshot){window.claude.hot.snapshot(()=>({draft:$("dumpBox").value,route:S.route}));}
+const hotStart=data=>{boot();if(data&&data.draft)$("dumpBox").value=data.draft;if(data&&data.route)go(data.route);};
+if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(hotStart);else hotStart((window.claude&&window.claude.hot&&window.claude.hot.data)||{});
+})();
+</script>
