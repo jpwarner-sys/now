@@ -56,6 +56,16 @@ Without those two values every dump queues on the device and the raw lamp stays 
 
 Open the live URL in Safari → Share → **Add to Home Screen**. Standalone, dark status bar, its own icon.
 
+## Tests
+
+```
+node test.js
+```
+
+No dependencies, no build, no framework. It reads `index.html` as text, pulls the shipped functions out of it, and runs them against `contract/` — joeos-core's own vectors, the same files that test `ops.py` and `first.ts`. **29 cases: 14 floor-matrix, 15 FIRST.** All must pass.
+
+A port is only worth something if it gives the same answers as the thing it was ported from. This is how that is checked rather than asserted.
+
 ## Where it came from
 
 This app is a reconciliation of two earlier ones. **[RECONCILIATION.md](RECONCILIATION.md)** maps every ported piece to its source, says which direction the merge ran and why, and lists what was left behind. Both originals are here to diff against.
