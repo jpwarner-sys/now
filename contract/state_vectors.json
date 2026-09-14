@@ -1,0 +1,19 @@
+{
+  "_": "Shared handshake between src/lib/state.ts (app) and joeos/state.py (brain). Both test suites load this file. null = slider untouched.",
+  "cases": [
+    { "name": "no data",              "vec": null,                                                                        "code": "—" },
+    { "name": "redline C",            "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 2, "control": 2 }, "code": "C" },
+    { "name": "C beats A",            "vec": { "family": 3, "energy": 5, "recharge": 3, "balance": 3, "harmony": 1, "control": 1 }, "code": "C" },
+    { "name": "high drive A",         "vec": { "family": 3, "energy": 4, "recharge": 3, "balance": 3, "harmony": 4, "control": 2 }, "code": "A" },
+    { "name": "low battery B",        "vec": { "family": 3, "energy": 2, "recharge": 3, "balance": 3, "harmony": 4, "control": 4 }, "code": "B" },
+    { "name": "tripwire energy",      "vec": { "family": 3, "energy": 1, "recharge": 3, "balance": 3, "harmony": 4, "control": 3 }, "code": "!" },
+    { "name": "tripwire control",     "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 4, "control": 2 }, "code": "!" },
+    { "name": "full house D",         "vec": { "family": 5, "energy": 3, "recharge": 3, "balance": 2, "harmony": 4, "control": 3 }, "code": "D" },
+    { "name": "flow E",               "vec": { "family": 3, "energy": 4, "recharge": 3, "balance": 3, "harmony": 4, "control": 4 }, "code": "E" },
+    { "name": "E beats D? no, D first","vec": { "family": 5, "energy": 5, "recharge": 3, "balance": 1, "harmony": 4, "control": 5 }, "code": "D" },
+    { "name": "steady F",             "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 3, "control": 3 }, "code": "F" },
+    { "name": "absent never trips",   "vec": { "family": 3, "energy": null, "recharge": 3, "balance": 3, "harmony": 3, "control": 3 }, "code": "—" },
+    { "name": "recharge optional",    "vec": { "family": 3, "energy": 3, "recharge": null, "balance": 3, "harmony": 3, "control": 3 }, "code": "F" },
+    { "name": "E with recharge null", "vec": { "family": 3, "energy": 5, "recharge": null, "balance": 3, "harmony": 5, "control": 5 }, "code": "E" }
+  ]
+}

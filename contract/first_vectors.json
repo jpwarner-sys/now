@@ -1,0 +1,162 @@
+{
+  "_": "Shared handshake for FIRST between joeos/ops.py (next_physical_action) and src/lib/first.ts. now = ET wall clock, naive. vec null = no floor check. expect_id null = no capture chosen. expect_stop = action_text is STOP_LINE.",
+  "cases": [
+    {
+      "name": "verb-first beats longer",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 3, "control": 3 },
+      "captures": [
+        { "id": "n1", "text": "the thing", "status": "open", "at": "2026-09-13 09:00" },
+        { "id": "v1", "text": "Call the dentist about the crown", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "v1",
+      "expect_stop": false
+    },
+    {
+      "name": "shorter verb wins among verbs",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [
+        { "id": "c1", "text": "Confirm Thursday morning leave", "status": "open", "at": "2026-09-11 09:00" },
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "p1",
+      "expect_stop": false
+    },
+    {
+      "name": "questions lose",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [
+        { "id": "q1", "text": "Why does the garage door stick?", "status": "open", "at": "2026-09-10 09:00" },
+        { "id": "g1", "text": "garage door is stuck again", "status": "open", "at": "2026-09-13 09:00" }
+      ],
+      "expect_id": "g1",
+      "expect_stop": false
+    },
+    {
+      "name": "B tightens cap: both over 8 words, oldest wins",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 2, "recharge": 3, "balance": 3, "harmony": 4, "control": 4 },
+      "captures": [
+        { "id": "new9", "text": "one two three four five six seven eight nine", "status": "open", "at": "2026-09-13 09:00" },
+        { "id": "old12", "text": "one two three four five six seven eight nine ten eleven twelve", "status": "open", "at": "2026-09-01 09:00" }
+      ],
+      "expect_id": "old12",
+      "expect_stop": false
+    },
+    {
+      "name": "same pool, steady F: shorter wins",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 3, "control": 3 },
+      "captures": [
+        { "id": "new9", "text": "one two three four five six seven eight nine", "status": "open", "at": "2026-09-13 09:00" },
+        { "id": "old12", "text": "one two three four five six seven eight nine ten eleven twelve", "status": "open", "at": "2026-09-01 09:00" }
+      ],
+      "expect_id": "new9",
+      "expect_stop": false
+    },
+    {
+      "name": "tripwire C stops",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 2, "control": 2 },
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": null,
+      "expect_stop": true
+    },
+    {
+      "name": "flow E never invents stop",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 5, "recharge": 3, "balance": 3, "harmony": 5, "control": 5 },
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "p1",
+      "expect_stop": false
+    },
+    {
+      "name": "tripwire ! (control 2) is not C: no stop, pick",
+      "now": "2026-09-13 14:00",
+      "vec": { "family": 3, "energy": 3, "recharge": 3, "balance": 3, "harmony": 4, "control": 2 },
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "p1",
+      "expect_stop": false
+    },
+    {
+      "name": "after 02:00 stops regardless",
+      "now": "2026-09-14 02:30",
+      "vec": { "family": 3, "energy": 5, "recharge": 3, "balance": 3, "harmony": 5, "control": 5 },
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": null,
+      "expect_stop": true
+    },
+    {
+      "name": "05:59 still stops",
+      "now": "2026-09-14 05:59",
+      "vec": null,
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": null,
+      "expect_stop": true
+    },
+    {
+      "name": "06:00 opens",
+      "now": "2026-09-14 06:00",
+      "vec": null,
+      "captures": [
+        { "id": "p1", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "p1",
+      "expect_stop": false
+    },
+    {
+      "name": "empty pool -> null id",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [],
+      "expect_id": null,
+      "expect_stop": false
+    },
+    {
+      "name": "done and parked are not open",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [
+        { "id": "d1", "text": "Book the alignment", "status": "done", "at": "2026-09-12 09:00" },
+        { "id": "k1", "text": "Call mom", "status": "parked", "at": "2026-09-12 10:00" },
+        { "id": "l1", "text": "Think about the whole Q4 plan and the app and everything else that is going on", "status": "open", "at": "2026-09-13 09:00" }
+      ],
+      "expect_id": "l1",
+      "expect_stop": false
+    },
+    {
+      "name": "older breaks ties",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [
+        { "id": "t2", "text": "Pack lunches", "status": "open", "at": "2026-09-13 10:00" },
+        { "id": "t1", "text": "Pack lunches", "status": "open", "at": "2026-09-01 10:00" }
+      ],
+      "expect_id": "t1",
+      "expect_stop": false
+    },
+    {
+      "name": "bare verb counts",
+      "now": "2026-09-13 14:00",
+      "vec": null,
+      "captures": [
+        { "id": "b1", "text": "call", "status": "open", "at": "2026-09-13 10:00" },
+        { "id": "b2", "text": "so", "status": "open", "at": "2026-09-13 10:00" }
+      ],
+      "expect_id": "b1",
+      "expect_stop": false
+    }
+  ]
+}
