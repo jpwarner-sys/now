@@ -1,0 +1,481 @@
+:root {
+  --cInk: #c1c8d5;
+  --cPhos: #3ff8a1;
+  --cAmber: #fbc45b;
+  --cCyan: #38d9fa;
+  --cSignal: #fa9d6b;
+  --cInkRGB: 193, 200, 213;
+  --cPhosRGB: 63, 248, 161;
+  --cAmberRGB: 251, 196, 91;
+  --cCyanRGB: 56, 217, 250;
+  --cSignalRGB: 250, 157, 107;
+  --phos: var(--cPhos);
+  --phosDim: #2bae6f;
+  --good: var(--cPhos);
+  --warn: var(--cAmber);
+  --bad: var(--cSignal);
+  --readout: #daf5fd;
+  --ink: #f2f3f7;
+  --ink2: var(--cInk);
+  --ink3: #818da0;
+  --inkDim: #57626e;
+  --bg: #101419;
+  --card: #151a22;
+  --card2: #12171d;
+  --line: #27323e;
+  --bezelEdge: #2f3b49;
+  --bezelKey: #18212c;
+  --well: #0c1014;
+  --strip: #0f1318;
+  --keyEdge: #202833;
+  --phosKeyBg: #121f19;
+  --phosKeyEdge: #196443;
+  --darkO: #070a0d;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Segoe UI, Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+button { font: inherit; border: 0; cursor: pointer; border-radius: 0; appearance: none; }
+
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  margin: 0 auto;
+}
+header.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 16px 8px;
+}
+h1 {
+  font-family: var(--mono);
+  font-size: 17.25px;
+  letter-spacing: 0.2em;
+  color: var(--phosDim);
+  font-weight: 700;
+  margin: 0;
+  text-transform: uppercase;
+}
+.build {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--inkDim);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 13.8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  background: var(--bezelKey);
+  color: var(--ink2);
+  border: 2px solid var(--line);
+}
+.chip .dot { width: 8px; height: 8px; background: var(--good); }
+main.page { flex: 1; padding: 8px 16px calc(96px + env(safe-area-inset-bottom)); }
+.card {
+  background: var(--card);
+  border: 2px solid var(--bezelEdge);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.muted { color: var(--ink2); font-size: 16.1px; line-height: 1.45; }
+.tiny { color: var(--ink3); font-size: 13.8px; line-height: 1.45; }
+.tag {
+  font-family: var(--mono);
+  letter-spacing: 0.26em;
+  color: var(--phosDim);
+  font-weight: 700;
+  font-size: 12px;
+}
+.btn {
+  background: var(--bezelKey);
+  color: var(--ink);
+  padding: 14px 16px;
+  font-size: 18.4px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 2px solid var(--bezelEdge);
+  width: 100%;
+  min-height: 44px;
+}
+.btn.primary {
+  background: var(--phosKeyBg);
+  color: var(--phos);
+  border-color: var(--phosKeyEdge);
+  font-weight: 700;
+}
+.btn.ghost { background: transparent; color: var(--ink2); border-color: var(--keyEdge); }
+.btn:disabled { opacity: 0.45; }
+.btn:active { transform: scale(0.985); }
+.row { display: flex; gap: 10px; }
+.row .btn { flex: 1; }
+input[type="text"], textarea {
+  width: 100%;
+  background: var(--well);
+  border: 2px solid var(--bezelEdge);
+  color: var(--ink);
+  padding: 15px 14px;
+  font-size: 16px;
+  outline: none;
+  border-radius: 0;
+  appearance: none;
+  font-family: inherit;
+}
+input[type="text"]:focus, textarea:focus { border-color: var(--phosDim); }
+input::placeholder, textarea::placeholder { color: var(--inkDim); }
+
+.cap {
+  display: flex;
+  align-items: stretch;
+  background: var(--card2);
+  border: 2px solid var(--bezelEdge);
+  margin-top: 8px;
+  font-size: 17.25px;
+  min-height: 44px;
+}
+.cap .t {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  padding: 8px 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.cap .id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink3);
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: 2px;
+}
+.cap .go, .cap .x, .cap .p {
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  background: none;
+  padding: 0 12px;
+  font-size: 13px;
+  flex: none;
+  border-left: 1px solid var(--bezelEdge);
+  color: var(--phos);
+}
+.cap .x { color: var(--cSignal); }
+.cap .p { color: var(--ink3); }
+
+.banner {
+  border: 2px solid var(--bad);
+  background: rgba(var(--cSignalRGB), 0.09);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--bad);
+}
+.banner.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: rgba(var(--cAmberRGB), 0.07);
+}
+
+.vec { margin: 16px 0 4px; }
+.vec .lab {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 16.1px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--phosDim);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.vec .val {
+  font-weight: 700;
+  color: var(--readout);
+  min-width: 16px;
+  text-align: right;
+  font-size: 18.4px;
+  font-variant-numeric: tabular-nums;
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--phos);
+  height: 34px;
+  appearance: none;
+  background: transparent;
+  margin: 0;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 16px;
+  border: 2px solid var(--bezelEdge);
+  background-color: var(--well);
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -7px;
+  background: var(--bezelKey);
+  border: 2.5px solid var(--phos);
+}
+.stateBox {
+  padding: 14px;
+  margin-top: 14px;
+  background: var(--bezelKey);
+  border: 2px solid var(--bezelEdge);
+}
+.stateBox b { font-family: var(--mono); font-size: 18.4px; letter-spacing: 0.1em; }
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+.kv:last-of-type { border-bottom: 0; }
+.kv b { font-family: var(--mono); letter-spacing: 0.04em; text-align: right; overflow-wrap: anywhere; }
+
+nav.tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  background: var(--strip);
+  border-top: 2px solid var(--bezelEdge);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+}
+nav.tabs a {
+  flex: 1;
+  text-decoration: none;
+  background: var(--bezelKey);
+  border: 2px solid var(--keyEdge);
+  color: var(--inkDim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 9px 0;
+  text-align: center;
+  position: relative;
+}
+nav.tabs a.on {
+  color: var(--phos);
+  border-color: var(--phosKeyEdge);
+  background: var(--phosKeyBg);
+}
+nav.tabs a.on::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: -1px;
+  height: 2.5px;
+  background: var(--phos);
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(108px + env(safe-area-inset-bottom));
+  background: var(--card);
+  border: 2px solid var(--phosDim);
+  color: var(--ink);
+  padding: 11px 18px;
+  font-family: var(--mono);
+  font-size: 16.1px;
+  letter-spacing: 0.06em;
+  max-width: 88vw;
+  opacity: 0;
+  transition: opacity 0.25s;
+  pointer-events: none;
+  z-index: 60;
+}
+#toast.on { opacity: 1; }
+
+.timer {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(40px, 14vw, 64px);
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.08em;
+  margin: 10px 0 2px;
+  color: var(--readout);
+}
+.timer::before { content: "T-"; color: var(--phosDim); }
+.verb {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--phos);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- v0.2: header strip, lanes, phosphor polish ---------- */
+.build { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; }
+.build .sep { color: var(--line); }
+.build .clock { color: var(--ink3); font-variant-numeric: tabular-nums; }
+.build .cutoff { color: var(--ink3); font-variant-numeric: tabular-nums; }
+.build .cutoff.warm { color: var(--warn); }
+.build .cutoff.hot { color: var(--bad); animation: blink 1.4s steps(2, end) infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+
+.chip .dot { transition: background 0.4s, box-shadow 0.4s; }
+
+/* CRT nod: faint scanlines + a whisper of vignette. Never touches contrast of text. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.11) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.22) 100%);
+  mix-blend-mode: multiply;
+}
+@media (prefers-reduced-motion: reduce) {
+  .build .cutoff.hot { animation: none; }
+}
+
+.btn.primary { text-shadow: 0 0 10px rgba(var(--cPhosRGB), 0.35); }
+.btn.primary:active { box-shadow: inset 0 0 18px rgba(var(--cPhosRGB), 0.18); }
+nav.tabs a.on { text-shadow: 0 0 9px rgba(var(--cPhosRGB), 0.45); }
+.card.running { border-color: var(--phosKeyEdge); box-shadow: 0 0 0 1px rgba(var(--cPhosRGB), 0.08), 0 0 28px rgba(var(--cPhosRGB), 0.07); }
+.timer { text-shadow: 0 0 14px rgba(var(--cCyanRGB), 0.25); }
+
+.lanes { padding: 12px 12px 10px; }
+.lanesHead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding: 0 4px; }
+.laneGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.lane {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 78px;
+  padding: 8px 8px 7px;
+  background: var(--bezelKey);
+  border: 2px solid var(--keyEdge);
+  color: var(--ink2);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.lane .laneWhen {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--inkDim);
+}
+.lane .laneLabel { font-size: 13.5px; font-weight: 600; line-height: 1.15; flex: 1; }
+.lane .laneStreak {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+}
+.lane.on {
+  background: var(--phosKeyBg);
+  border-color: var(--phosKeyEdge);
+  color: var(--phos);
+  text-shadow: 0 0 9px rgba(var(--cPhosRGB), 0.35);
+}
+.lane.on .laneWhen, .lane.on .laneStreak { color: var(--phosDim); }
+.lane:active { transform: scale(0.97); }
+@media (max-width: 380px) {
+  .laneGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* v0.3 — brain link (iris.hero/v1). Four rows, printed verbatim. Nothing when the brain is silent. */
+.hero { padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
+.heroRow { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: baseline; }
+.heroVal {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.heroVal.missing {
+  color: var(--bad);
+  outline: 1px dashed var(--bad);
+  outline-offset: 3px;
+  padding: 0 2px;
+}
+.heroFoot { margin-top: 2px; letter-spacing: 0.04em; }
+
+/* ---------- v0.3: §5 rulings from the walker (Joe, 2026-09-13, on his phone) ----------
+   Type scale ×1.2 with a 13.5px floor. "Everything is so tiny when you are 48 and wear progressive lenses."
+   Buttons: label centred by flex, 2px more padding below than above, line-height 1. Lamps, not sentences. */
+:root {
+  --t-floor: 13.5px;
+  --t-body: 19px;
+  --t-head: 26.5px;
+  --t-head-long: 21.5px;
+  --t-label: 15.5px;
+}
+body { font-size: var(--t-body); }
+.muted { font-size: var(--t-body); }
+.tiny, .build, .cap .id, .tag, .lane .laneWhen, .lane .laneStreak, .heroFoot { font-size: var(--t-floor); }
+.lane .laneLabel { font-size: var(--t-label); }
+.verb { font-size: var(--t-head); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.verb.long { font-size: var(--t-head-long); }
+.cap .t { font-size: var(--t-body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cap .go, .cap .x, .cap .p { font-size: var(--t-floor); }
+input[type="text"], textarea { font-size: var(--t-body); text-align: center; min-height: 53px; }
+input::placeholder, textarea::placeholder { text-align: center; }
+nav.tabs a { font-size: var(--t-label); }
+.kv { font-size: var(--t-body); }
+
+/* the button rule — every key, chip, segment, link */
+.btn, nav.tabs a, .lane, .cap .go, .cap .x, .cap .p, .lamp {
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+  padding-top: 12px; padding-bottom: 14px;
+}
+.btn { min-height: 46px; }
+.lane { flex-direction: column; align-items: stretch; }
+.cap .go, .cap .x, .cap .p { padding-top: 0; padding-bottom: 2px; }
+
+/* header: name left, lamps right. No clock, no date — the phone shows those. */
+header.top { align-items: center; gap: 10px; }
+h1 .ver { color: var(--inkDim); letter-spacing: 0.1em; font-size: var(--t-floor); margin-left: 6px; display: inline; }
+header.top h1 { white-space: nowrap; }
+.lamps { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.lamp {
+  gap: 5px; min-height: 36px; padding: 8px 7px 10px; letter-spacing: 0.08em;
+  background: var(--bezelKey); border: 2px solid var(--keyEdge); color: var(--ink3);
+  font-family: var(--mono); font-size: var(--t-floor); font-weight: 700; letter-spacing: 0.14em;
+}
+.lamp .dot { width: 9px; height: 9px; background: var(--inkDim); }
+.lamp.ok .dot { background: var(--good); box-shadow: 0 0 8px rgba(var(--cPhosRGB), 0.7); }
+.lamp.warn .dot { background: var(--warn); box-shadow: 0 0 8px rgba(var(--cAmberRGB), 0.7); }
+.lamp.bad .dot { background: var(--bad); box-shadow: 0 0 8px rgba(var(--cSignalRGB), 0.7); animation: blink 1.4s steps(2, end) infinite; }
+.lamp.off .dot { background: var(--inkDim); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .lamp.bad .dot { animation: none; } }
