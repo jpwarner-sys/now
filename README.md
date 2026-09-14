@@ -37,6 +37,8 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 `localStorage` on the device. Six collections — items, cards, decisions, floor, receipts, counters — plus a held-dump queue. It survives reload and offline. It does not sync between devices, and nothing is sent anywhere.
 
+**Every copy of this app keeps its own store.** To move what is in one, use **STUCK → Your data**: *Export* writes a single JSON file to the device — starts, cards, decisions, floor readings, receipts, counters and lanes; *Import* merges one back in, newest write winning per record. Credentials are never exported. Nothing is uploaded.
+
 ## The raw door (optional)
 
 Off by default and shipped with no credentials — **this repo is public and carries no account, folder or client identifiers.**
@@ -54,13 +56,29 @@ Without those two values every dump queues on the device and the raw lamp stays 
 
 Open the live URL in Safari → Share → **Add to Home Screen**. Standalone, dark status bar, its own icon.
 
+## Where it came from
+
+This app is a reconciliation of two earlier ones. **[RECONCILIATION.md](RECONCILIATION.md)** maps every ported piece to its source, says which direction the merge ran and why, and lists what was left behind. Both originals are here to diff against.
+
 ## Layout
 
 ```
-index.html                 the whole app
+index.html                 the whole app — read this
+RECONCILIATION.md          what came from where, and what didn't
 manifest.webmanifest       standalone display, icons
 icon.svg  icon-192.png  icon-512.png  icon-512-maskable.png  apple-touch-icon.png
+
+legacy/walker.html         the first app — the face this one kept
+engine/                    the second app — the brain this one took
+  src/lib/first.ts           the FIRST chooser, ported into index.html
+  src/lib/state.ts           the v5.1 floor matrix, ported into index.html
+  src/lib/lanes.ts           lanes and streaks, ported into index.html
+  src/lib/clock.ts           the 02:00 cutoff, ported into index.html
+  src/lib/door.ts            the raw door, both transports
+  src/lib/ids.ts             REDACTED — see RECONCILIATION.md
 ```
+
+`engine/` and `legacy/` are reference, not build inputs. Nothing in this repo compiles; `index.html` is the app.
 
 ## Licence
 

@@ -240,6 +240,12 @@ body{padding:0 16px;padding-block:0}
           <button class="btn sm" id="stepToDump" hidden>Dump it</button>
         </div>
       </div>
+      <div class="card ask" id="storeCard">
+        <div class="tag">Your data</div>
+        <div class="answer muted" id="storeOut">Every copy of NOW keeps its own store. Export writes one file with your starts, cards, decisions, floor readings, receipts, counters and lanes; import merges that file into this copy. Nothing is uploaded — the file goes to this device.</div>
+        <div class="row" id="storeActs"></div>
+        <input id="impFile" type="file" accept="application/json,.json" class="sr">
+      </div>
       <div class="card ask" id="doorCard" hidden>
         <div class="tag">Raw door</div>
         <div class="answer muted" id="doorOut">This copy is hosted on GitHub, so it has no Claude connector. Sign in with Google and DUMP writes straight into the Lab feeds folder from your own account.</div>
@@ -365,7 +371,7 @@ function render(){
   const ql=$("queue");ql.innerHTML="";q.slice(0,8).forEach(i=>{const d=document.createElement("div");d.className="item";d.innerHTML='<div class="t">'+esc(i.text)+'</div>';const mini=document.createElement("div");mini.className="mini";const big=document.createElement("button");big.className="chipbtn"+(S.bigPick===i.id?" acc":"");big.textContent="▤";big.title="Break it down";big.onclick=()=>{S.bigPick=i.id;go("stuck");};const st=document.createElement("button");st.className="chipbtn acc";st.textContent="▶";st.title="Start";st.onclick=()=>start(i);mini.append(big,st);d.append(mini);const s=document.createElement("div");s.className="s";s.innerHTML="landed<br>"+esc(etTime(new Date(i.at)))+" ET";d.append(s);ql.append(d);});
   if(q.length>8){const m=document.createElement("div");m.className="item";m.innerHTML='<div class="t muted">…and '+(q.length-8)+' more, oldest first</div>';ql.append(m);}
   $("queueCard").hidden=!q.length;
-  renderLanes();syncCutoff();renderCards();renderFloor();renderStuck();renderDoor();
+  renderLanes();syncCutoff();renderCards();renderFloor();renderStuck();renderDoor();renderStore();
 }
 /* NOW-V1: L's four lanes, ported from lanes.ts. On this phone only; tokenised "L", never a real name (walls §6). Skip-days are stepped over, never counted against a streak. */
 var LANES=[{key:"school",label:"School",skip:[0,6]},{key:"lunches",label:"Lunch",skip:[5,6]},{key:"laundry",label:"Laundry",skip:[]},{key:"cooking",label:"Cook",skip:[]}];
@@ -508,6 +514,46 @@ function renderDoor(){var card=$("doorCard");if(!card)return;
       renderDoor();syncDoorLamp();renderHeld();}));}
 }
 
+/* NOW-V1 · GH: carry the store between copies. Every copy of NOW — this one, the
+   artifact one, a second phone — keeps its own store, so the only honest way to move
+   what is in one is to hand you the file. Export writes it; import merges it, newest
+   write wins per record. Credentials are never exported. */
+var EXPORT_SCHEMA="joeos.now.export/v1";
+function exportBundle(){var b={schema:EXPORT_SCHEMA,at:nowIso(),from:location.origin+location.pathname,
+  store:{items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters},
+  held:heldQ(),lanes:readLanes()};
+  return JSON.stringify(b,null,1);}
+function exportGo(){try{
+  var name="now_store_"+rawStamp(new Date())+".json";
+  var blob=new Blob([exportBundle()],{type:"application/json"});
+  var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
+  var n=0;COLS.forEach(function(k){n+=Object.keys(S[k]||{}).length;});
+  toast("Exported "+n+" records to "+name);
+  }catch(e){toast("Could not write the file here.");}}
+function newer(a,b){/* prefer the record that was written last; a record with no stamp loses */
+  var x=Date.parse((a&&(a.at||a.started_at))||0)||0,y=Date.parse((b&&(b.at||b.started_at))||0)||0;return x>=y?a:b;}
+async function importBundle(text){var b;try{b=JSON.parse(text);}catch(e){toast("That file is not readable JSON.");return;}
+  if(!b||b.schema!==EXPORT_SCHEMA||!b.store){toast("That is not a NOW export file.");return;}
+  var added=0,merged=0;
+  COLS.forEach(function(k){var incoming=b.store[k]||{};
+    for(var id in incoming){var inc=incoming[id];if(!inc||typeof inc!=="object")continue;
+      if(!S[k][id]){S[k][id]=inc;added++;}
+      else{var win=newer(S[k][id],inc);if(win!==S[k][id]){S[k][id]=win;merged++;}}}});
+  if(Array.isArray(b.held)&&b.held.length){var have=heldQ();var seen={};
+    have.concat(b.held).forEach(function(h){if(h&&h.text){var key=h.text+"|"+(h.at||"");seen[key]=h;}});
+    heldSet(Object.keys(seen).map(function(k2){return seen[k2];}));}
+  if(b.lanes&&typeof b.lanes==="object"){var log=readLanes();
+    for(var day in b.lanes){log[day]=Object.assign({},log[day]||{},b.lanes[day]);}writeLanes(log);}
+  cache();
+  /* push everything up if a shared store is attached */
+  if(db){for(var i=0;i<COLS.length;i++){var k3=COLS[i];for(var id2 in S[k3]){try{await col(k3).doc(id2).set(S[k3][id2]);}catch(e){}}}}
+  render();toast("Imported — "+added+" new, "+merged+" updated.");}
+function renderStore(){var acts=$("storeActs");if(!acts)return;acts.innerHTML="";
+  var n=0;COLS.forEach(function(k){n+=Object.keys(S[k]||{}).length;});
+  acts.append(btn(n?"Export "+n+" records":"Export","sm",exportGo));
+  acts.append(btn("Import a file","sm",function(){$("impFile").click();}));}
+
 // starts (the walker's only prose; deleted at Done)
 async function land(text,parent){text=(text||"").trim();if(!text)return;const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("items",id,{text,at:nowIso(),state:"landed",words:words(text),parent:parent||null});return id;}
 async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const h={text:t,at:new Date().toISOString(),k:uid()};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
@@ -545,7 +591,9 @@ function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("w
   else{lamp("lampStore","warn","On-device store — this phone keeps your starts, cards, floor and receipts. Nothing syncs to another device.");syncDoorLamp();}
   var cid=$("cidBox");if(cid){cid.value=clientId();cid.addEventListener("input",function(){setClientId(cid.value);renderDoor();syncDoorLamp();});}
   var fid=$("fidBox");if(fid){fid.value=feedsFolder();fid.addEventListener("input",function(){setFeedsFolder(fid.value);renderDoor();syncDoorLamp();});}
-  renderDoor();syncDoorLamp();
+  renderDoor();syncDoorLamp();renderStore();
+  var imp=$("impFile");if(imp)imp.addEventListener("change",function(){var f=imp.files&&imp.files[0];if(!f)return;
+    var fr=new FileReader();fr.onload=function(){importBundle(String(fr.result));imp.value="";};fr.onerror=function(){toast("Could not read that file.");};fr.readAsText(f);});
 }
 // NOW-V1: home-screen install. The icon is the designed asset set shipped beside this
 // page (192 / 512 / maskable / apple-touch), not a shape drawn at runtime, and the manifest
