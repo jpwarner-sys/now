@@ -159,7 +159,7 @@ body{padding:0 16px;padding-block:0}
 </style>
 
 <div class="phone" id="phone">
-  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.2</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
+  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.3</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
 
   <div class="screen">
 
@@ -427,11 +427,11 @@ $("landStages").onclick=async()=>{const pick=S.items[S.bigPick];if(!pick||!S.sta
 const HELD_KEY="walker.held";
 function heldQ(){try{return JSON.parse(localStorage.getItem(HELD_KEY)||"[]");}catch(e){return[];}}
 function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(e){}renderHeld();try{render();}catch(e){}}
-function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · tries at next DUMP":"";syncDoorLamp();}
+function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · "+(darkDoor()?"held until 06:00 ET":"tries at next DUMP"):"";syncDoorLamp();}
 async function sha256(s){const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest("SHA-256",b);return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 function rawStamp(d){const p=n=>String(n).padStart(2,"0");return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+"T"+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds());}
 async function rawBody(text){const asOf=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");const hash=await sha256(text);const bytes=new TextEncoder().encode(text).length;return {hash,bytes,body:"---\nschema: \"lab.intake.raw/v1\"\nas_of: \""+asOf+"\"\nsource_hash: \""+hash+"\"\nbytes: "+bytes+"\nsanitizer: \"STEWARD\"\nvessel_read_restriction: \"STEWARD only (R-050)\"\norigin_surface: \"walker_v0\"\ntruncated: false\n---\n"+text+"\n"};}
-async function landRaw(text,atIso){if(!mcp&&!accessToken())throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
+async function landRaw(text,atIso){if(darkDoor())throw {code:"dark"};if(!mcp&&!accessToken())throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
   let f=null;
   if(mcp){const r=await mcp.callTool("Google Drive","create_file",{title:name,parentId:feedsFolder(),contentMimeType:"text/plain",disableConversionToGoogleType:true,textContent:body},{cache:false});
     f=r&&r.payload;if(!f&&r&&r.content&&r.content[0]&&r.content[0].text){try{f=JSON.parse(r.content[0].text);}catch(e){f=null;}}if(!f&&r&&r.id)f=r;}
@@ -439,9 +439,9 @@ async function landRaw(text,atIso){if(!mcp&&!accessToken())throw {code:"no_door"
   const size=f&&f.fileSize?parseInt(f.fileSize,10):null;const ok=size===total;
   await put("receipts",name.replace(/\.md$/,""),{at:new Date().toISOString(),name,bytes,sha:hash,file_bytes:size,file_id:f&&f.id||null,readback:ok?"ok":"size mismatch"});
   return {name,bytes,total,size,ok};}
-async function flushHeld(){const q=heldQ();if(!q.length||!doorOpen())return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at);}catch(e){rest.push(h);}}heldSet(rest);}
+async function flushHeld(){const q=heldQ();if(!q.length||darkDoor()||!doorOpen())return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at);}catch(e){rest.push(h);}}heldSet(rest);}
 async function dumpRaw(t){try{const r=await landRaw(t);renderHeld();toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));}
-  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);toast(e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");}}
+  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);toast(e&&e.code==="dark"?"Dark until 06:00 ET — held on this phone.":e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");}}
 
 
 /* NOW-V1 · GH: the second door. In the artifact runtime the door is the Claude "Google Drive"
@@ -491,11 +491,16 @@ async function createRawOnDrive(name,body){var t=accessToken();if(!t)throw {code
   if(!res.ok)throw {code:"drive_"+res.status};
   var j=await res.json();if(!j.id)throw {code:"drive_no_id"};
   return {id:j.id,fileSize:j.size!=null?j.size:"-1"};}
-function doorOpen(){return !!mcp||(!!accessToken()&&!!feedsFolder());}
+/* NOW-V1 · R-068: the door is shut 02:00-05:59 ET. door.ts held the dump and made no
+   Drive call in that window; the hosted copy wrote straight through, which is the one
+   place it did not behave like the older version. Held here, flushed after 06:00. */
+function darkDoor(){var h=etHour();return h>=2&&h<6;}
+function doorOpen(){return !darkDoor()&&(!!mcp||(!!accessToken()&&!!feedsFolder()));}
 function syncDoorLamp(){var q=heldQ();
-  if(q.length){lamp("lampDoor",doorOpen()?"warn":"bad",q.length+(q.length>1?" dumps":" dump")+" waiting on this phone — the next DUMP tries them again");}
+  if(q.length){lamp("lampDoor",(doorOpen()||darkDoor())?"warn":"bad",q.length+(q.length>1?" dumps":" dump")+" waiting on this phone — "+(darkDoor()?"the door is shut until 06:00 ET":"the next DUMP tries them again"));}
   else if(mcp){lamp("lampDoor","ok","Door open via the Claude connector — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
   else if(accessToken()){lamp("lampDoor","ok","Door open via your Google sign-in"+(signedEmail()?" ("+signedEmail()+")":"")+" — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
+  else if(darkDoor()){lamp("lampDoor","warn","Dark until 06:00 ET — the door is shut by the rule. Dumps hold on this phone and go after six.");}
   else {lamp("lampDoor","bad","No door — dumps queue on this phone. Open STUCK to sign in.");}}
 function renderDoor(){var card=$("doorCard");if(!card)return;
   card.hidden=!!mcp;if(mcp)return;
@@ -557,8 +562,9 @@ function renderStore(){var acts=$("storeActs");if(!acts)return;acts.innerHTML=""
 // starts (the walker's only prose; deleted at Done)
 async function land(text,parent){text=(text||"").trim();if(!text)return;const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("items",id,{text,at:nowIso(),state:"landed",words:words(text),parent:parent||null});return id;}
 async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const h={text:t,at:new Date().toISOString(),k:uid()};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
+  if(darkDoor()){toast("Dark until 06:00 ET — held on this phone.");return;}
   if(!doorOpen()){toast("No door right now — queued on this phone. Open STUCK to sign in.");return;}
-  let r=null;try{r=await landRaw(h.text,h.at);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){toast(e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");return;}
+  let r=null;try{r=await landRaw(h.text,h.at);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){toast(e&&e.code==="dark"?"Dark until 06:00 ET — held on this phone.":e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");return;}
   toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));flushHeld();}
 async function startGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;box.value="";box.style.height="";const id=await land(t);toast("Start waiting. "+t.slice(0,32)+(t.length>32?"…":""),()=>del("items",id));await flushHeld();try{await landRaw(t);}catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);}}
 // one button: tap = Land, hold = Start
