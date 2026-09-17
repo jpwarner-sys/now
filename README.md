@@ -37,6 +37,8 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 `localStorage` on the device. Six collections — items, cards, decisions, floor, receipts, counters — plus a held-dump queue. It survives reload and offline. It does not sync between devices, and nothing is sent anywhere.
 
+*Note: This app is hosted at `now.ontologyhome.ca` (no DNS resolution required, it's a local alias/subdomain). The storage keys are prefixed with `now.` to prevent collisions with other apps if hosted on a shared domain like `github.io`.*
+
 **Every copy of this app keeps its own store.** To move what is in one, use **STUCK → Your data**: *Export* writes a single JSON file to the device — starts, cards, decisions, floor readings, receipts, counters and lanes; *Import* merges one back in, newest write winning per record. Credentials are never exported. Nothing is uploaded.
 
 ## The raw door (optional)

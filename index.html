@@ -310,14 +310,14 @@ let db=null,sample=null,mcp=null,dbState="memory";
 /* NOW-V1 · GH: this copy lives in a public repo, so it carries no account, folder or client
    identifiers. The Drive feeds folder and the OAuth client ID are set once on the device,
    under STUCK -> Raw door, and never leave it. */
-var FEEDS_KEY="joeos.now.feeds_folder";
+var FEEDS_KEY="now.feeds_folder";
 function feedsFolder(){try{return (localStorage.getItem(FEEDS_KEY)||"").trim();}catch(e){return "";}}
 function setFeedsFolder(v){try{localStorage.setItem(FEEDS_KEY,(v||"").trim());}catch(e){}}
 const COLS=["items","cards","decisions","floor","receipts","counters"];
 const col=name=>db?db.collection(name):null;
 
-function cache(){try{localStorage.setItem("walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
-function uncache(){try{const j=JSON.parse(localStorage.getItem("walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
+function cache(){try{localStorage.setItem("now.walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
+function uncache(){try{const j=JSON.parse(localStorage.getItem("now.walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
 
 async function put(kind,id,data){S[kind][id]=Object.assign({},S[kind][id]||{},data,{id});cache();render();const c=col(kind);if(c){try{await c.doc(id).set(S[kind][id]);}catch(e){note("write failed · "+(e&&e.code||"?"));lamp("lampStore","bad","Store write failed · "+(e&&e.code||"?")+" — kept on this phone; reload when the store is back.");}}}
 async function del(kind,id){delete S[kind][id];cache();render();const c=col(kind);if(c){try{await c.doc(id).delete();}catch(e){}}}
@@ -375,7 +375,7 @@ function render(){
 }
 /* NOW-V1: L's four lanes, ported from lanes.ts. On this phone only; tokenised "L", never a real name (walls §6). Skip-days are stepped over, never counted against a streak. */
 var LANES=[{key:"school",label:"School",skip:[0,6]},{key:"lunches",label:"Lunch",skip:[5,6]},{key:"laundry",label:"Laundry",skip:[]},{key:"cooking",label:"Cook",skip:[]}];
-var LANE_KEY="CapacitorStorage.joeos.now.lanes.v1";
+var LANE_KEY="now.lanes.v1";
 function readLanes(){try{var j=JSON.parse(localStorage.getItem(LANE_KEY)||"{}");return (j&&typeof j==="object")?j:{};}catch(e){return {};}}
 function writeLanes(l){try{localStorage.setItem(LANE_KEY,JSON.stringify(l));}catch(e){}}
 function shiftDay(ymd,d){var a=ymd.split("-").map(Number);var t=Date.UTC(a[0],a[1]-1,a[2])+d*86400000;var n=new Date(t);return n.getUTCFullYear()+"-"+String(n.getUTCMonth()+1).padStart(2,"0")+"-"+String(n.getUTCDate()).padStart(2,"0");}
@@ -424,7 +424,7 @@ $("askStages").onclick=async()=>{if(!sample)return;const pick=S.items[S.bigPick]
 $("landStages").onclick=async()=>{const pick=S.items[S.bigPick];if(!pick||!S.stages)return;const n=S.stages.length;for(const s of S.stages){await land(s.first_step+" — "+s.title,pick.id);}await put("items",pick.id,{state:"parked",broken_down:true});S.bigPick=null;S.stages=null;$("stages").innerHTML="";$("landStages").hidden=true;$("stagesOut").textContent="Landed "+n+" stages as starts; the big one is parked.";go("now");};
 
 // raw door — RAW_SHAPE_v1 exactly as 6_APP/Code.gs buildRawBody_ writes it; the page keeps a receipt, never the text
-const HELD_KEY="walker.held";
+const HELD_KEY="now.walker.held";
 function heldQ(){try{return JSON.parse(localStorage.getItem(HELD_KEY)||"[]");}catch(e){return[];}}
 function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(e){}renderHeld();try{render();}catch(e){}}
 function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · "+(darkDoor()?"held until 06:00 ET":"tries at next DUMP"):"";syncDoorLamp();}
@@ -448,7 +448,7 @@ async function dumpRaw(t){try{const r=await landRaw(t);renderHeld();toast("Dumpe
    connector; hosted anywhere else there is no connector, so this signs Joe in with his own
    Google account and writes the same RAW_SHAPE_v1 file with Drive v3 multipart — byte-identical
    to what createRawOnDrive() in door.ts sends. The client ID lives on this phone only. */
-var CID_KEY="joeos.now.client_id", TOK_KEY="joeos.now.token", EML_KEY="joeos.now.email";
+var CID_KEY="now.client_id", TOK_KEY="now.token", EML_KEY="now.email";
 var GIS_SRC="https://accounts.google.com/gsi/client";
 var DRIVE_SCOPES="https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
 function clientId(){try{return (localStorage.getItem(CID_KEY)||"").trim();}catch(e){return "";}}
@@ -586,11 +586,11 @@ $("lampStore").onclick=()=>toast($("lampStore").dataset.msg||"store");
 $("lampDoor").onclick=()=>toast($("lampDoor").dataset.msg||"door");
 
 // routes
-function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("walker.route",r);}catch(e){}}
+function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("now.walker.route",r);}catch(e){}}
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
 
 // boot
-function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("walker.route")||"now";}catch(e){}go(r);
+function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("now.walker.route")||"now";}catch(e){}go(r);
   if(window.claude&&window.claude.use){window.claude.use("db").then(d=>{if(d){db=d;dbState="db";lamp("lampStore","ok","Store live — walker_v0 is keeping your starts, cards and receipts.");subscribe();}else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");}});
     window.claude.use("sample").then(s=>{sample=s;render();});
     window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}
