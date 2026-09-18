@@ -143,8 +143,8 @@ body{padding:0 16px;padding-block:0}
 .darknote{text-align:center;padding:40px 12px 20px;color:var(--ink2);font-size:18px}
 .darknote .big{font-family:var(--mono);font-size:14.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:10px}
 .sr{position:absolute;left:-9999px}
-#cidBox,#fidBox{width:100%;margin-top:8px;background:var(--well);border:1.5px solid var(--edge2);border-radius:12px;color:var(--ink);font:inherit;font-family:var(--mono);font-size:14.5px;padding:10px 12px 11px;outline:none}
-#cidBox:focus,#fidBox:focus{border-color:var(--acc)}
+#doorUrlBox,#doorKeyBox{width:100%;margin-top:8px;background:var(--well);border:1.5px solid var(--edge2);border-radius:12px;color:var(--ink);font:inherit;font-family:var(--mono);font-size:14.5px;padding:10px 12px 11px;outline:none}
+#doorUrlBox:focus,#doorKeyBox:focus{border-color:var(--acc)}
 #doorCfg summary{list-style:none}#doorCfg summary::-webkit-details-marker{display:none}
 #doorCfg summary:before{content:"▸ ";color:var(--dim)}#doorCfg[open] summary:before{content:"▾ "}
 .lanerow{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;width:100%;margin:2px 0 1px}
@@ -159,7 +159,7 @@ body{padding:0 16px;padding-block:0}
 </style>
 
 <div class="phone" id="phone">
-  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.3</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
+  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.4</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
 
   <div class="screen">
 
@@ -248,14 +248,13 @@ body{padding:0 16px;padding-block:0}
       </div>
       <div class="card ask" id="doorCard" hidden>
         <div class="tag">Raw door</div>
-        <div class="answer muted" id="doorOut">This copy is hosted on GitHub, so it has no Claude connector. Sign in with Google and DUMP writes straight into the Lab feeds folder from your own account.</div>
+        <div class="answer muted" id="doorOut">This public repo ships neither a door URL nor a door key. Enter both once on this device; they stay in localStorage and DUMP posts with them.</div>
         <div class="row" id="doorActs"></div>
-        <details id="doorCfg" style="margin-top:10px">
-          <summary class="stamp" style="cursor:pointer">OAuth client ID</summary>
-          <input id="cidBox" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="xxxxx.apps.googleusercontent.com">
-          <input id="fidBox" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Drive feeds folder ID">
-          <div class="stamp" style="margin-top:6px">Both kept on this phone only, never sent anywhere but Google. This repo is public, so it ships with neither. The client ID comes from Google Cloud Console → Credentials → OAuth client ID → Web application, with this page's origin as an authorised JavaScript origin; the folder ID is the last segment of the feeds folder's Drive URL.</div>
-        </details>
+        <div id="doorCfg" style="margin-top:10px">
+          <input id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
+          <input id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
+          <div class="stamp" style="margin-top:6px">Public copy ships neither. Enter once per device — kept on this phone only. DUMP posts the key in the JSON body, never in the URL.</div>
+        </div>
       </div>
       <div class="card ask">
         <div class="tag">Break it down</div>
@@ -307,9 +306,16 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 // ---------- state (memory first; db when it resolves) ----------
 const S={items:{},cards:{},decisions:{},floor:{},receipts:{},counters:{},route:"now",bigPick:null,stages:null};
 let db=null,sample=null,mcp=null,dbState="memory";
-/* NOW-V1 · GH: this copy lives in a public repo, so it carries no account, folder or client
-   identifiers. The Drive feeds folder and the OAuth client ID are set once on the device,
-   under STUCK -> Raw door, and never leave it. */
+/* walker-dump-door: public repo ships neither door URL nor door key.
+   Both live in localStorage (STUCK → Raw door), entered once per device.
+   DUMP POSTs JSON {key,text,receipt_id,schema,origin_surface}; key never in the URL. */
+var DOOR_URL_LS="joeos.now.door_url", DOOR_KEY_LS="joeos.now.door_key";
+function doorUrl(){try{return (localStorage.getItem(DOOR_URL_LS)||"").trim();}catch(e){return "";}}
+function setDoorUrl(v){try{localStorage.setItem(DOOR_URL_LS,(v||"").trim());}catch(e){}}
+function doorKey(){try{return (localStorage.getItem(DOOR_KEY_LS)||"").trim();}catch(e){return "";}}
+function setDoorKey(v){try{localStorage.setItem(DOOR_KEY_LS,(v||"").trim());}catch(e){}}
+function doorKeyed(){return !!(doorUrl()&&doorKey());}
+/* legacy OAuth folder id retained for mcp/connector path only */
 var FEEDS_KEY="joeos.now.feeds_folder";
 function feedsFolder(){try{return (localStorage.getItem(FEEDS_KEY)||"").trim();}catch(e){return "";}}
 function setFeedsFolder(v){try{localStorage.setItem(FEEDS_KEY,(v||"").trim());}catch(e){}}
@@ -430,8 +436,26 @@ function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(
 function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · "+(darkDoor()?"held until 06:00 ET":"tries at next DUMP"):"";syncDoorLamp();}
 async function sha256(s){const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest("SHA-256",b);return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 function rawStamp(d){const p=n=>String(n).padStart(2,"0");return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+"T"+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds());}
-async function rawBody(text){const asOf=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");const hash=await sha256(text);const bytes=new TextEncoder().encode(text).length;return {hash,bytes,body:"---\nschema: \"lab.intake.raw/v1\"\nas_of: \""+asOf+"\"\nsource_hash: \""+hash+"\"\nbytes: "+bytes+"\nsanitizer: \"STEWARD\"\nvessel_read_restriction: \"STEWARD only (R-050)\"\norigin_surface: \"walker_v0\"\ntruncated: false\n---\n"+text+"\n"};}
-async function landRaw(text,atIso){if(darkDoor())throw {code:"dark"};if(!mcp&&!accessToken())throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
+async function rawBody(text){const asOf=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");const hash=await sha256(text);const bytes=new TextEncoder().encode(text).length;return {hash,bytes,body:"---\nschema: \"lab.intake.raw/v1\"\nas_of: \""+asOf+"\"\nsource_hash: \""+hash+"\"\nbytes: "+bytes+"\nsanitizer: \"STEWARD\"\nvessel_read_restriction: \"STEWARD only (R-050)\"\norigin_surface: \"walker\"\ntruncated: false\n---\n"+text+"\n"};}
+function dumpHoldToast(err){
+  if((err&&err.code)==="dark"||(!err&&darkDoor()))return "Dark until 06:00 ET — held on this phone.";
+  if(err&&err.code==="unauthorized")return "Door key refused — held on this phone.";
+  if(err&&err.code==="not_granted")return "Not allowed to write Drive — queued on this phone.";
+  if(!doorUrl()&&!doorKey())return "No door URL or door key on this phone — queued. Open STUCK → Raw door (public copy ships neither).";
+  if(!doorUrl())return "No door URL on this phone — queued. Open STUCK → Raw door.";
+  if(!doorKey())return "No door key on this phone — queued. Open STUCK → Raw door.";
+  return "No door right now — queued on this phone. Open STUCK → Raw door.";}
+async function landRawViaDoor(text,receiptId){const url=doorUrl(),key=doorKey();if(!url||!key)throw {code:"no_door"};const id=receiptId||(crypto.randomUUID?crypto.randomUUID():uid());
+  const payload=JSON.stringify({key:key,text:String(text||""),receipt_id:id,schema:"lab.intake.raw/v1",origin_surface:"walker"});
+  let res,raw;
+  try{res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:payload});raw=await res.text();}
+  catch(e){throw {code:"no_door",receipt_id:id};}
+  if(!raw)throw {code:"unauthorized",receipt_id:id};
+  let j;try{j=JSON.parse(raw);}catch(e){throw {code:"bad_response",receipt_id:id};}
+  if(!j||!j.ok)throw {code:"door_"+(j&&j.code||res.status||"?"),receipt_id:id};
+  await put("receipts",j.receipt_id,{at:new Date().toISOString(),receipt_id:j.receipt_id,bytes:j.bytes,origin_surface:"walker"});
+  return {receipt_id:j.receipt_id,bytes:j.bytes,total:j.bytes,ok:true};}
+async function landRawViaDrive(text,atIso){if(!mcp&&!accessToken())throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
   let f=null;
   if(mcp){const r=await mcp.callTool("Google Drive","create_file",{title:name,parentId:feedsFolder(),contentMimeType:"text/plain",disableConversionToGoogleType:true,textContent:body},{cache:false});
     f=r&&r.payload;if(!f&&r&&r.content&&r.content[0]&&r.content[0].text){try{f=JSON.parse(r.content[0].text);}catch(e){f=null;}}if(!f&&r&&r.id)f=r;}
@@ -439,9 +463,13 @@ async function landRaw(text,atIso){if(darkDoor())throw {code:"dark"};if(!mcp&&!a
   const size=f&&f.fileSize?parseInt(f.fileSize,10):null;const ok=size===total;
   await put("receipts",name.replace(/\.md$/,""),{at:new Date().toISOString(),name,bytes,sha:hash,file_bytes:size,file_id:f&&f.id||null,readback:ok?"ok":"size mismatch"});
   return {name,bytes,total,size,ok};}
-async function flushHeld(){const q=heldQ();if(!q.length||darkDoor()||!doorOpen())return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at);}catch(e){rest.push(h);}}heldSet(rest);}
-async function dumpRaw(t){try{const r=await landRaw(t);renderHeld();toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));}
-  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);toast(e&&e.code==="dark"?"Dark until 06:00 ET — held on this phone.":e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");}}
+async function landRaw(text,atIso,receiptId){if(darkDoor())throw {code:"dark"};
+  if(doorKeyed())return landRawViaDoor(text,receiptId);
+  return landRawViaDrive(text,atIso);}
+async function flushHeld(){const q=heldQ();if(!q.length||darkDoor()||!doorOpen())return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at,h.receipt_id);}catch(e){const rid=(e&&e.receipt_id)||h.receipt_id;rest.push({text:h.text,at:h.at,receipt_id:rid});}}heldSet(rest);}
+async function dumpRaw(t){const rid=(crypto.randomUUID?crypto.randomUUID():uid());
+  try{const r=await landRaw(t,null,rid);renderHeld();toast("Dumped → raw · "+(r.total||r.bytes||0)+" B"+(r.ok?" · ok":""));}
+  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString(),receipt_id:(e&&e.receipt_id)||rid});heldSet(q);toast(dumpHoldToast(e));}}
 
 
 /* NOW-V1 · GH: the second door. In the artifact runtime the door is the Claude "Google Drive"
@@ -495,28 +523,29 @@ async function createRawOnDrive(name,body){var t=accessToken();if(!t)throw {code
    Drive call in that window; the hosted copy wrote straight through, which is the one
    place it did not behave like the older version. Held here, flushed after 06:00. */
 function darkDoor(){var h=etHour();return h>=2&&h<6;}
-function doorOpen(){return !darkDoor()&&(!!mcp||(!!accessToken()&&!!feedsFolder()));}
+function doorOpen(){return !darkDoor()&&(doorKeyed()||!!mcp||(!!accessToken()&&!!feedsFolder()));}
 function syncDoorLamp(){var q=heldQ();
   if(q.length){lamp("lampDoor",(doorOpen()||darkDoor())?"warn":"bad",q.length+(q.length>1?" dumps":" dump")+" waiting on this phone — "+(darkDoor()?"the door is shut until 06:00 ET":"the next DUMP tries them again"));}
+  else if(doorKeyed()){lamp("lampDoor","ok","Door open — DUMP posts to the keyed door (URL and key on this phone only).");}
   else if(mcp){lamp("lampDoor","ok","Door open via the Claude connector — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
   else if(accessToken()){lamp("lampDoor","ok","Door open via your Google sign-in"+(signedEmail()?" ("+signedEmail()+")":"")+" — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
   else if(darkDoor()){lamp("lampDoor","warn","Dark until 06:00 ET — the door is shut by the rule. Dumps hold on this phone and go after six.");}
-  else {lamp("lampDoor","bad","No door — dumps queue on this phone. Open STUCK to sign in.");}}
+  else {lamp("lampDoor","bad","No door — dumps queue on this phone. Open STUCK → Raw door and enter a door URL and door key (public copy ships neither).");}}
 function renderDoor(){var card=$("doorCard");if(!card)return;
   card.hidden=!!mcp;if(mcp)return;
-  var box=$("cidBox");if(box&&document.activeElement!==box&&box.value!==clientId())box.value=clientId();
-  var fbox=$("fidBox");if(fbox&&document.activeElement!==fbox&&fbox.value!==feedsFolder())fbox.value=feedsFolder();
+  var ubox=$("doorUrlBox");if(ubox&&document.activeElement!==ubox&&ubox.value!==doorUrl())ubox.value=doorUrl();
+  var kbox=$("doorKeyBox");if(kbox&&document.activeElement!==kbox&&kbox.value!==doorKey())kbox.value=doorKey();
   var acts=$("doorActs");acts.innerHTML="";
   var out=$("doorOut");
-  if(accessToken()){out.textContent="Door open"+(signedEmail()?" as "+signedEmail():"")+". DUMP writes straight into the Lab feeds folder.";out.classList.remove("muted");
-    acts.append(btn("Sign out","sm",googleSignOut));}
-  else if(!clientId()||!feedsFolder()){out.textContent="This copy is hosted on GitHub, so it has no Claude connector. Open the two fields below and paste an OAuth client ID and the Drive feeds folder ID — then sign in, and DUMP writes into that folder from your own account.";out.classList.add("muted");}
-  else {out.textContent="Signed out. Dumps queue on this phone until you sign in.";out.classList.add("muted");
-    acts.append(btn("Sign in with Google","primary",async function(){out.textContent="Opening Google\u2026";
-      var r=await googleSignIn();
-      if(r.ok){toast("Door open"+(r.email?" as "+r.email:"")+".");await flushHeld();}
-      else toast(r.error==="NO_CLIENT_ID"?"Paste an OAuth client ID first.":r.error==="GIS_BLOCKED"?"Google sign-in did not load here.":"Sign-in failed ("+r.error+").");
-      renderDoor();syncDoorLamp();renderHeld();}));}
+  if(doorKeyed()){out.textContent="Door URL and door key saved on this phone. DUMP posts to the keyed door — public repo ships neither.";out.classList.remove("muted");
+    acts.append(btn("Clear door","sm",function(){setDoorUrl("");setDoorKey("");if(ubox)ubox.value="";if(kbox)kbox.value="";renderDoor();syncDoorLamp();renderHeld();}));}
+  else {out.textContent="Enter a door URL and a door key once below. This public repo ships neither. After that, DUMP is one tap — the key goes in the JSON body, never in the URL.";out.classList.add("muted");
+    acts.append(btn("Save door","primary",function(){var u=(ubox&&ubox.value||"").trim(),k=(kbox&&kbox.value||"").trim();
+      setDoorUrl(u);setDoorKey(k);
+      if(!u&&!k){toast("Paste a door URL and a door key first.");renderDoor();syncDoorLamp();return;}
+      if(!u){toast("Door key saved — still need a door URL. Public copy ships neither.");renderDoor();syncDoorLamp();return;}
+      if(!k){toast("Door URL saved — still need a door key. Public copy ships neither.");renderDoor();syncDoorLamp();return;}
+      toast("Door URL and door key saved on this phone.");renderDoor();syncDoorLamp();flushHeld();renderHeld();}));}
 }
 
 /* NOW-V1 · GH: carry the store between copies. Every copy of NOW — this one, the
@@ -561,12 +590,12 @@ function renderStore(){var acts=$("storeActs");if(!acts)return;acts.innerHTML=""
 
 // starts (the walker's only prose; deleted at Done)
 async function land(text,parent){text=(text||"").trim();if(!text)return;const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("items",id,{text,at:nowIso(),state:"landed",words:words(text),parent:parent||null});return id;}
-async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const h={text:t,at:new Date().toISOString(),k:uid()};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
+async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const rid=(crypto.randomUUID?crypto.randomUUID():uid());const h={text:t,at:new Date().toISOString(),k:uid(),receipt_id:rid};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
   if(darkDoor()){toast("Dark until 06:00 ET — held on this phone.");return;}
-  if(!doorOpen()){toast("No door right now — queued on this phone. Open STUCK to sign in.");return;}
-  let r=null;try{r=await landRaw(h.text,h.at);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){toast(e&&e.code==="dark"?"Dark until 06:00 ET — held on this phone.":e&&e.code==="not_granted"?"Not allowed to write Drive — queued on this phone.":"No door right now — queued on this phone.");return;}
-  toast("Dumped → raw · "+r.total+" B"+(r.ok?" · read back ok":" · CHECK SIZE"));flushHeld();}
-async function startGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;box.value="";box.style.height="";const id=await land(t);toast("Start waiting. "+t.slice(0,32)+(t.length>32?"…":""),()=>del("items",id));await flushHeld();try{await landRaw(t);}catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString()});heldSet(q);}}
+  if(!doorOpen()){toast(dumpHoldToast());return;}
+  let r=null;try{r=await landRaw(h.text,h.at,h.receipt_id);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){const rid2=(e&&e.receipt_id)||h.receipt_id;const q2=heldQ().map(x=>x.k===h.k?Object.assign({},x,{receipt_id:rid2}):x);heldSet(q2);toast(dumpHoldToast(e));return;}
+  toast("Dumped → raw · "+(r.total||r.bytes||0)+" B"+(r.ok?" · ok":""));flushHeld();}
+async function startGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;box.value="";box.style.height="";const id=await land(t);toast("Start waiting. "+t.slice(0,32)+(t.length>32?"…":""),()=>del("items",id));await flushHeld();const rid=(crypto.randomUUID?crypto.randomUUID():uid());try{await landRaw(t,null,rid);}catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString(),receipt_id:(e&&e.receipt_id)||rid});heldSet(q);}}
 // one button: tap = Land, hold = Start
 (function(){const b=$("dumpGo");let t=null,held=false,down=false;const arm=()=>{held=true;b.classList.add("hold");b.textContent="START";if(navigator.vibrate)navigator.vibrate(12);};const reset=()=>{clearTimeout(t);t=null;down=false;held=false;b.classList.remove("hold");b.textContent="DUMP";};
 b.oncontextmenu=e=>{e.preventDefault();return false;};
@@ -595,8 +624,8 @@ function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("w
     window.claude.use("sample").then(s=>{sample=s;render();});
     window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}
   else{lamp("lampStore","warn","On-device store — this phone keeps your starts, cards, floor and receipts. Nothing syncs to another device.");syncDoorLamp();}
-  var cid=$("cidBox");if(cid){cid.value=clientId();cid.addEventListener("input",function(){setClientId(cid.value);renderDoor();syncDoorLamp();});}
-  var fid=$("fidBox");if(fid){fid.value=feedsFolder();fid.addEventListener("input",function(){setFeedsFolder(fid.value);renderDoor();syncDoorLamp();});}
+  var du=$("doorUrlBox");if(du)du.value=doorUrl();
+  var dk=$("doorKeyBox");if(dk)dk.value=doorKey();
   renderDoor();syncDoorLamp();renderStore();
   var imp=$("impFile");if(imp)imp.addEventListener("change",function(){var f=imp.files&&imp.files[0];if(!f)return;
     var fr=new FileReader();fr.onload=function(){importBundle(String(fr.result));imp.value="";};fr.onerror=function(){toast("Could not read that file.");};fr.readAsText(f);});
