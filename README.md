@@ -41,16 +41,16 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 ## The raw door (optional)
 
-Off by default and shipped with no credentials — **this repo is public and carries no account, folder or client identifiers.**
+Off by default and shipped with no credentials — **this repo is public and carries neither a door URL nor a door key.**
 
-To turn it on, open **STUCK → Raw door** and paste two values, both kept on the device and never sent anywhere but Google:
+To turn it on, open **STUCK → Raw door** and paste two values, both kept in `localStorage` on this device (`joeos.now.door_url` and `joeos.now.door_key`) and never committed:
 
-1. An **OAuth client ID** — Google Cloud Console → Credentials → OAuth client ID → Web application, with `https://<your-user>.github.io` as an authorised JavaScript origin.
-2. A **Drive folder ID** — the last segment of the destination folder's Drive URL.
+1. A **door URL** — the door endpoint you already have.
+2. A **door key** — the shared secret that endpoint expects in the JSON body.
 
-Then sign in. DUMP writes one `raw_*.md` file into that folder with a small YAML header, reads the stored size back, and keeps a receipt. Scope requested is `drive.file`, which only ever grants access to files this app itself creates.
+Enter them once per device. DUMP then POSTs JSON `{key, text, receipt_id, schema, origin_surface}` to that URL — **the key never goes in the query string.** When both are set, that keyed path is preferred.
 
-Without those two values every dump queues on the device and the raw lamp stays red. Nothing is lost; the next dump retries the queue.
+Without both values every dump queues on the device and the raw lamp stays red. Nothing is lost; the next dump retries the queue. The toast says which of the two is missing.
 
 ## Install
 
