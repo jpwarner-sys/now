@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Apply walker-keyed-door client onto index.html
 set -euo pipefail
 cd "$(dirname "$0")/.."
-base64 -d patches/index.html.patched.gz.b64 | gzip -d > index.html
+cat patches/index.html.patched.gz.b64.part0 patches/index.html.patched.gz.b64.part1 patches/index.html.patched.gz.b64.part2 | base64 -d | gzip -d > index.html
 echo "Wrote index.html ($(wc -c < index.html) bytes)"
