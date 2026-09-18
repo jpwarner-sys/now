@@ -2,12 +2,13 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-if [[ ! -f patches/walker-keyed-door.index.html.patch ]]; then
-  echo "Missing patches/walker-keyed-door.index.html.patch"
-  echo "Assemble: cat patches/p?? > patches/walker-keyed-door.index.html.patch"
-  echo "Or copy from Deep Scan box: /workspace/walker-door-ticket/index.html.walker_door.patch"
-  exit 1
-fi
+PARTS=(patches/walker-keyed-door.index.html.patch.gz.b64.part0
+       patches/walker-keyed-door.index.html.patch.gz.b64.part1
+       patches/walker-keyed-door.index.html.patch.gz.b64.part2)
+for p in "${PARTS[@]}"; do
+  [[ -f "$p" ]] || { echo "missing $p"; exit 1; }
+done
+cat "${PARTS[@]}" | base64 -d | gunzip > patches/walker-keyed-door.index.html.patch
 patch -p1 < patches/walker-keyed-door.index.html.patch
 grep -q DOOR_URL index.html
 grep -q doorKeyBox index.html
