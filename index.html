@@ -232,6 +232,16 @@ body{padding:0 16px;padding-block:0}
     <!-- STUCK -->
     <section class="route" id="r-stuck" aria-label="Stuck">
       <div class="row between"><span class="tag">Stuck</span><span class="stamp" id="stuckOn">on: nothing started</span></div>
+      <div class="card ask" id="doorCard" hidden>
+        <div class="tag">Raw door</div>
+        <div class="answer muted" id="doorOut">This public repo ships neither a door URL nor a door key. Enter both once on this device; they stay in localStorage and DUMP posts with them.</div>
+        <div class="row" id="doorActs"></div>
+        <div id="doorCfg" style="margin-top:10px">
+          <input id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
+          <input id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
+          <div class="stamp" style="margin-top:6px">Public copy ships neither. Enter once per device — kept on this phone only. DUMP posts the key in the JSON body, never in the URL.</div>
+        </div>
+      </div>
       <div class="card ask">
         <div class="tag">One next step</div>
         <div class="answer muted" id="stepOut">Ask for the one physical thing to do next — twelve words or fewer. It knows what you started and how the floor read tonight.</div>
@@ -245,16 +255,6 @@ body{padding:0 16px;padding-block:0}
         <div class="answer muted" id="storeOut">Every copy of NOW keeps its own store. Export writes one file with your starts, cards, decisions, floor readings, receipts, counters and lanes; import merges that file into this copy. Nothing is uploaded — the file goes to this device.</div>
         <div class="row" id="storeActs"></div>
         <input id="impFile" type="file" accept="application/json,.json" class="sr">
-      </div>
-      <div class="card ask" id="doorCard" hidden>
-        <div class="tag">Raw door</div>
-        <div class="answer muted" id="doorOut">This public repo ships neither a door URL nor a door key. Enter both once on this device; they stay in localStorage and DUMP posts with them.</div>
-        <div class="row" id="doorActs"></div>
-        <div id="doorCfg" style="margin-top:10px">
-          <input id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
-          <input id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
-          <div class="stamp" style="margin-top:6px">Public copy ships neither. Enter once per device — kept on this phone only. DUMP posts the key in the JSON body, never in the URL.</div>
-        </div>
       </div>
       <div class="card ask">
         <div class="tag">Break it down</div>
