@@ -39,6 +39,10 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 **Every copy of this app keeps its own store.** To move what is in one, use **STUCK → Your data**: *Export* writes a single JSON file to the device — starts, cards, decisions, floor readings, receipts, counters and lanes; *Import* merges one back in, newest write winning per record. Credentials are never exported. Nothing is uploaded.
 
+## Lock
+
+A four-digit PIN gate stands in front of the app. **First launch** asks you to set a PIN and confirm it; **every launch after** asks for it before the surface appears. Only a salted SHA-256 hash of the PIN lives in `localStorage` (`joeos.now.pin`) on this device — the digits themselves are never stored and nothing is sent anywhere. Forget the PIN and the only way back in is clearing this site's data, which clears the store with it. Like the store, the lock is per-device and does not sync.
+
 ## The raw door (optional)
 
 Off by default and shipped with no credentials — **this repo is public and carries neither a door URL nor a door key.**

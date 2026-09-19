@@ -156,6 +156,22 @@ body{padding:0 16px;padding-block:0}
 .lane.on .s{color:var(--acc);opacity:.75}
 .lane.skip{opacity:.4}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}to{transform:translate(-50%,0);opacity:1}}}
+.lock{position:absolute;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:calc(28px + env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom))}
+.lock[hidden]{display:none!important}
+.lock .brand{font-family:var(--mono);font-size:14px;letter-spacing:.28em;color:var(--ink3);text-transform:uppercase}
+.lock .title{font-size:23px;font-weight:700;letter-spacing:-.01em;text-align:center}
+.lock .sub{color:var(--ink2);font-size:16px;text-align:center;min-height:22px;margin-top:-8px;padding:0 8px}
+.lock .sub.err{color:var(--bad)}
+.dots{display:flex;gap:16px;margin:2px 0 6px}
+.dots i{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--edge2);background:transparent}
+.dots i.on{background:var(--acc);border-color:var(--acc);box-shadow:0 0 8px var(--accDim)}
+.dots.shake{animation:shake .34s}
+@keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:min(292px,80vw)}
+.pad button{appearance:none;font:inherit;font-family:var(--mono);font-size:27px;color:var(--ink);background:var(--well);border:1.5px solid var(--edge2);border-radius:50%;aspect-ratio:1;min-height:70px;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-tap-highlight-color:transparent}
+.pad button:active{background:var(--accBg);border-color:var(--acc);color:var(--acc)}
+.pad button.blank{background:none;border:0;cursor:default;pointer-events:none}
+.pad button.act{font-size:22px;color:var(--ink3)}
 </style>
 
 <div class="phone" id="phone">
@@ -282,6 +298,19 @@ body{padding:0 16px;padding-block:0}
     <button class="tab" data-r="floor"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V13"/><path d="M9.3 20V8.5"/><path d="M14.7 20v-6"/><path d="M20 20V4.5"/></svg></span>FLOOR</button>
     <button class="tab" data-r="stuck"><span class="g"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12h9"/><path d="M9 8l4 4-4 4"/><path d="M17.5 3.5v17"/><path d="M21 6v12"/></svg></span>STUCK</button>
   </nav>
+
+  <div class="lock" id="lock" role="dialog" aria-modal="true" aria-label="Locked">
+    <div class="brand">NOW</div>
+    <div class="title" id="lockTitle">Enter PIN</div>
+    <div class="sub" id="lockSub">Enter your PIN to unlock.</div>
+    <div class="dots" id="lockDots"><i></i><i></i><i></i><i></i></div>
+    <div class="pad" id="lockPad">
+      <button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button>
+      <button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button>
+      <button type="button" data-d="7">7</button><button type="button" data-d="8">8</button><button type="button" data-d="9">9</button>
+      <button type="button" class="blank" tabindex="-1"></button><button type="button" data-d="0">0</button><button type="button" class="act" id="lockDel" aria-label="Delete">⌫</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast" hidden><span id="toastText"></span><button class="u" id="toastUndo">UNDO · 3</button></div>
@@ -617,6 +646,64 @@ $("lampDoor").onclick=()=>toast($("lampDoor").dataset.msg||"door");
 // routes
 function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("walker.route",r);}catch(e){}}
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
+
+// ---------- lock screen ----------
+// On-device PIN gate. First launch sets a PIN (enter, then confirm); every later
+// launch asks for it. Only a salted SHA-256 hash is kept in localStorage on this
+// device — never the digits themselves, and nothing is ever sent anywhere.
+var PIN_LS="joeos.now.pin", PIN_LEN=4;
+function pinStored(){try{return JSON.parse(localStorage.getItem(PIN_LS)||"null");}catch(e){return null;}}
+async function pinHash(pin,salt){
+  var data=new TextEncoder().encode(String(salt)+"\u0000"+String(pin));
+  try{if(window.crypto&&crypto.subtle&&crypto.subtle.digest){var buf=await crypto.subtle.digest("SHA-256",data);return Array.prototype.map.call(new Uint8Array(buf),function(b){return b.toString(16).padStart(2,"0");}).join("");}}catch(e){}
+  var h=5381;for(var i=0;i<data.length;i++){h=((h<<5)+h+data[i])>>>0;}return "x"+h.toString(16);
+}
+function initLock(){
+  var lock=$("lock");if(!lock)return;
+  var title=$("lockTitle"),sub=$("lockSub"),dots=$("lockDots");
+  var mode=pinStored()?"enter":"set",firstPin=null,buf="",busy=false;
+  var pips=dots.querySelectorAll("i");
+  function paint(){for(var i=0;i<pips.length;i++)pips[i].classList.toggle("on",i<buf.length);}
+  function say(t,err){sub.textContent=t;sub.classList.toggle("err",!!err);}
+  function prompt(){
+    if(mode==="enter"){title.textContent="Enter PIN";say("Enter your PIN to unlock.");}
+    else if(mode==="set"){title.textContent="Set a PIN";say("Choose a "+PIN_LEN+"-digit PIN for this device.");}
+    else{title.textContent="Confirm PIN";say("Enter it once more.");}
+  }
+  function shake(){dots.classList.remove("shake");void dots.offsetWidth;dots.classList.add("shake");}
+  function clear(){buf="";paint();}
+  function unlock(){lock.hidden=true;document.removeEventListener("keydown",onKey);}
+  async function submit(){
+    busy=true;
+    if(mode==="enter"){
+      var s=pinStored(),h=await pinHash(buf,s&&s.salt);
+      if(s&&h===s.hash)return unlock();
+      clear();shake();say("Wrong PIN. Try again.",true);
+    }else if(mode==="set"){
+      firstPin=buf;clear();mode="confirm";prompt();
+    }else{
+      if(buf===firstPin){
+        var salt=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():uid();
+        var hh=await pinHash(buf,salt);
+        try{localStorage.setItem(PIN_LS,JSON.stringify({salt:salt,hash:hh,len:PIN_LEN}));}catch(e){}
+        return unlock();
+      }
+      firstPin=null;clear();shake();mode="set";prompt();say("Those didn't match. Start again.",true);
+    }
+    busy=false;
+  }
+  function push(d){if(busy||buf.length>=PIN_LEN)return;buf+=d;paint();if(buf.length===PIN_LEN)setTimeout(submit,110);}
+  function back(){if(busy||!buf.length)return;buf=buf.slice(0,-1);paint();}
+  function onKey(e){
+    if(lock.hidden)return;
+    if(e.key>="0"&&e.key<="9"){e.preventDefault();push(e.key);}
+    else if(e.key==="Backspace"){e.preventDefault();back();}
+  }
+  $("lockPad").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;if(b.id==="lockDel")return back();var d=b.getAttribute("data-d");if(d)push(d);});
+  document.addEventListener("keydown",onKey);
+  prompt();paint();
+}
+initLock();
 
 // boot
 function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("walker.route")||"now";}catch(e){}go(r);
