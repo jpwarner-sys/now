@@ -41,7 +41,7 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 ## Lock
 
-A four-digit PIN gate stands in front of the app. **First launch** asks you to set a PIN and confirm it; **every launch after** asks for it before the surface appears. Only a salted SHA-256 hash of the PIN lives in `localStorage` (`joeos.now.pin`) on this device — the digits themselves are never stored and nothing is sent anywhere. Forget the PIN and the only way back in is clearing this site's data, which clears the store with it. Like the store, the lock is per-device and does not sync.
+A PIN gate stands in front of the app. The PIN is **set in the code**, not chosen in the app — the lock only ever *asks* for it, it never lets anyone create or change one. Edit `LOCK_PIN` near the lock code in `index.html` to whatever digits you want (any length); the keypad sizes itself to match. Every launch asks for it before the surface appears; leave `LOCK_PIN` empty (`""`) to turn the lock off. The PIN lives only in the page's code — nothing about the lock is written to the device or sent anywhere.
 
 ## The raw door (optional)
 

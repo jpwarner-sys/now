@@ -648,52 +648,34 @@ function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classL
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
 
 // ---------- lock screen ----------
-// On-device PIN gate. First launch sets a PIN (enter, then confirm); every later
-// launch asks for it. Only a salted SHA-256 hash is kept in localStorage on this
-// device — never the digits themselves, and nothing is ever sent anywhere.
-var PIN_LS="joeos.now.pin", PIN_LEN=4;
-function pinStored(){try{return JSON.parse(localStorage.getItem(PIN_LS)||"null");}catch(e){return null;}}
-async function pinHash(pin,salt){
-  var data=new TextEncoder().encode(String(salt)+"\u0000"+String(pin));
-  try{if(window.crypto&&crypto.subtle&&crypto.subtle.digest){var buf=await crypto.subtle.digest("SHA-256",data);return Array.prototype.map.call(new Uint8Array(buf),function(b){return b.toString(16).padStart(2,"0");}).join("");}}catch(e){}
-  var h=5381;for(var i=0;i<data.length;i++){h=((h<<5)+h+data[i])>>>0;}return "x"+h.toString(16);
-}
+// The unlock PIN is set here in the code, not chosen in the app. Change LOCK_PIN
+// to whatever digits you want (any length). Leave it "" to disable the lock. The
+// app only ever *asks* for this PIN — it never lets anyone create or change one,
+// and nothing about the lock is written to the device or sent anywhere.
+var LOCK_PIN="1234";
 function initLock(){
   var lock=$("lock");if(!lock)return;
+  var pin=String(LOCK_PIN||"");
+  if(!pin){lock.hidden=true;return;}            // no PIN set in code → no lock
   var title=$("lockTitle"),sub=$("lockSub"),dots=$("lockDots");
-  var mode=pinStored()?"enter":"set",firstPin=null,buf="",busy=false;
+  var len=pin.length,buf="",busy=false;
+  dots.innerHTML="";for(var i=0;i<len;i++)dots.appendChild(document.createElement("i"));
   var pips=dots.querySelectorAll("i");
+  title.textContent="Enter PIN";
   function paint(){for(var i=0;i<pips.length;i++)pips[i].classList.toggle("on",i<buf.length);}
   function say(t,err){sub.textContent=t;sub.classList.toggle("err",!!err);}
-  function prompt(){
-    if(mode==="enter"){title.textContent="Enter PIN";say("Enter your PIN to unlock.");}
-    else if(mode==="set"){title.textContent="Set a PIN";say("Choose a "+PIN_LEN+"-digit PIN for this device.");}
-    else{title.textContent="Confirm PIN";say("Enter it once more.");}
-  }
   function shake(){dots.classList.remove("shake");void dots.offsetWidth;dots.classList.add("shake");}
   function clear(){buf="";paint();}
   function unlock(){lock.hidden=true;document.removeEventListener("keydown",onKey);}
-  async function submit(){
+  function submit(){
     busy=true;
-    if(mode==="enter"){
-      var s=pinStored(),h=await pinHash(buf,s&&s.salt);
-      if(s&&h===s.hash)return unlock();
-      clear();shake();say("Wrong PIN. Try again.",true);
-    }else if(mode==="set"){
-      firstPin=buf;clear();mode="confirm";prompt();
-    }else{
-      if(buf===firstPin){
-        var salt=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():uid();
-        var hh=await pinHash(buf,salt);
-        try{localStorage.setItem(PIN_LS,JSON.stringify({salt:salt,hash:hh,len:PIN_LEN}));}catch(e){}
-        return unlock();
-      }
-      firstPin=null;clear();shake();mode="set";prompt();say("Those didn't match. Start again.",true);
-    }
+    if(buf===pin){return unlock();}
+    clear();shake();say("Wrong PIN. Try again.",true);
     busy=false;
   }
-  function push(d){if(busy||buf.length>=PIN_LEN)return;buf+=d;paint();if(buf.length===PIN_LEN)setTimeout(submit,110);}
+  function push(d){if(busy||buf.length>=len)return;buf+=d;paint();if(buf.length===len)setTimeout(submit,110);}
   function back(){if(busy||!buf.length)return;buf=buf.slice(0,-1);paint();}
+  say("Enter your PIN to unlock.");paint();
   function onKey(e){
     if(lock.hidden)return;
     if(e.key>="0"&&e.key<="9"){e.preventDefault();push(e.key);}
@@ -701,7 +683,6 @@ function initLock(){
   }
   $("lockPad").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;if(b.id==="lockDel")return back();var d=b.getAttribute("data-d");if(d)push(d);});
   document.addEventListener("keydown",onKey);
-  prompt();paint();
 }
 initLock();
 
