@@ -43,7 +43,7 @@ for(const [label,re,blob] of [
 if(!SRC.includes('joeos.now.door_url'))secretHits.push('missing joeos.now.door_url');
 if(!SRC.includes('joeos.now.door_key'))secretHits.push('missing joeos.now.door_key');
 if(!SRC.includes('id="doorUrlBox"')||!SRC.includes('id="doorKeyBox"'))secretHits.push('missing Raw door fields');
-if(!SRC.includes('id="verNum">0.9.4<'))secretHits.push('version not 0.9.4');
+if(!SRC.includes('id="verNum">0.9.5<'))secretHits.push('version not 0.9.5');
 if(!SRC.includes('origin_surface:"walker"'))secretHits.push('missing origin_surface walker');
 if(secretHits.length){
   console.log('\nDOOR SHIP  FAIL  '+JSON.stringify(secretHits));
@@ -67,10 +67,11 @@ dcheck('missing key toast',/No door key/.test(D.dumpHoldToast()));
 D.setDoorKey('not-a-live-key');
 dcheck('both set is keyed',D.doorKeyed()===true);
 dcheck('keyed no-door toast generic',/No door right now/.test(D.dumpHoldToast()));
+dcheck('keyed network toast',/Door unreachable \(network\)/.test(D.dumpHoldToast({code:'network'})));
 D.setDoorUrl('');
 dcheck('key only is not keyed',D.doorKeyed()===false);
 dcheck('missing url toast',/No door URL/.test(D.dumpHoldToast()));
-console.log('DOOR HOLD   '+dPass+'/8');
+console.log('DOOR HOLD   '+dPass+'/9');
 if(dFail.length){console.log(JSON.stringify(dFail,null,1));process.exit(1);}
 
 // ---- state / floor matrix ----
