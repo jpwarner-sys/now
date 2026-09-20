@@ -29,6 +29,50 @@ const parts=[
 const F=new Function(parts.join('\n')+'\nreturn {VECTORS,chipFor,isTripped,scoreItem,words,PHYSICAL_VERBS};')();
 console.log('extracted: VECTORS='+F.VECTORS.length+' verbs='+F.PHYSICAL_VERBS.length);
 
+// ---- public copy ships neither door URL nor door key ----
+const README=fs.readFileSync(path.join(__dirname,'README.md'),'utf8');
+const secretHits=[];
+for(const [label,re,blob] of [
+  ['index.html script.google.com',/script\.google\.com/i,SRC],
+  ['index.html Apps Script deployment id',/AKfycb/,SRC],
+  ['index.html macros/s/ exec path',/macros\/s\//,SRC],
+  ['README script.google.com',/script\.google\.com/i,README],
+  ['README Apps Script deployment id',/AKfycb/,README],
+  ['README macros/s/ exec path',/macros\/s\//,README],
+]){if(re.test(blob))secretHits.push(label);}
+if(!SRC.includes('joeos.now.door_url'))secretHits.push('missing joeos.now.door_url');
+if(!SRC.includes('joeos.now.door_key'))secretHits.push('missing joeos.now.door_key');
+if(!SRC.includes('id="doorUrlBox"')||!SRC.includes('id="doorKeyBox"'))secretHits.push('missing Raw door fields');
+if(!SRC.includes('id="verNum">0.9.4<'))secretHits.push('version not 0.9.4');
+if(!SRC.includes('origin_surface:"walker"'))secretHits.push('missing origin_surface walker');
+if(secretHits.length){
+  console.log('\nDOOR SHIP  FAIL  '+JSON.stringify(secretHits));
+  process.exit(1);
+}
+console.log('door ship: no exec URL / key in index.html or README; localStorage fields present');
+
+const bag={};
+const doorSrc=(grab(/var DOOR_URL_LS=[\s\S]*?function doorKeyed\(\)\{return !!\(doorUrl\(\)&&doorKey\(\)\);\}/,'door helpers')+'\n'+grab(/function dumpHoldToast\(err\)\{[\s\S]*?return "No door right now — queued on this phone\. Open STUCK → Raw door\.";\}/,'dumpHoldToast')+'\nfunction darkDoor(){return false;}\nreturn {doorKeyed,setDoorUrl,setDoorKey,dumpHoldToast};').replace(/localStorage/g,'ls');
+const D=new Function('ls',doorSrc)({
+  getItem:k=>Object.prototype.hasOwnProperty.call(bag,k)?bag[k]:null,
+  setItem:(k,v)=>{bag[k]=String(v);},
+});
+let dPass=0,dFail=[];
+function dcheck(name,ok){if(ok)dPass++;else dFail.push(name);}
+dcheck('empty is not keyed',D.doorKeyed()===false);
+dcheck('missing both toast',/No door URL or door key/.test(D.dumpHoldToast()));
+D.setDoorUrl('https://example.invalid/door');
+dcheck('url only is not keyed',D.doorKeyed()===false);
+dcheck('missing key toast',/No door key/.test(D.dumpHoldToast()));
+D.setDoorKey('not-a-live-key');
+dcheck('both set is keyed',D.doorKeyed()===true);
+dcheck('keyed no-door toast generic',/No door right now/.test(D.dumpHoldToast()));
+D.setDoorUrl('');
+dcheck('key only is not keyed',D.doorKeyed()===false);
+dcheck('missing url toast',/No door URL/.test(D.dumpHoldToast()));
+console.log('DOOR HOLD   '+dPass+'/8');
+if(dFail.length){console.log(JSON.stringify(dFail,null,1));process.exit(1);}
+
 // ---- state / floor matrix ----
 const sv=JSON.parse(fs.readFileSync(C+'state_vectors.json','utf8'));
 let sPass=0,sFail=[];

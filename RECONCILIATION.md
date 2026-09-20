@@ -45,7 +45,7 @@ The old chip averaged whatever vectors were set. Energy 1 and control 1 with fou
 
 `engine/src/lib/ids.ts` in this repo is a placeholder file. The real one holds a Google Sheet id, an Apps Script web-app deployment id, two Drive folder ids, a file id and an account hint. Two of those are irreplaceable and one is effectively an endpoint. `legacy/walker.html` had one of the same folder ids inline; it is redacted the same way.
 
-Both files are otherwise byte-for-byte as they were. `engine/` will type-check and build with the placeholders in place; it will not reach anything live until the real values are restored locally. **`index.html` — the app that actually ships — never had any of them:** it asks for the folder id on the device, under STUCK → Raw door, and keeps it there.
+Both files are otherwise byte-for-byte as they were. `engine/` will type-check and build with the placeholders in place; it will not reach anything live until the real values are restored locally. **`index.html` — the app that actually ships — never had any of them:** it asks for a door URL and a door key on the device, under STUCK → Raw door, and keeps them there.
 
 ## What is still unreconciled
 
