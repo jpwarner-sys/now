@@ -73,8 +73,8 @@ export interface WalkerStore {
   subscribe<K extends Kind>(kind: K, cb: (docs: DocOf[K][]) => void): () => void;
 }
 
-export const MIRROR_KEY = "walker.v0";
-export const HELD_KEY = "walker.held";
+export const MIRROR_KEY = "now.walker.v0";
+export const HELD_KEY = "now.walker.held";
 
 export function nowIso(): string {
   return new Date().toISOString();

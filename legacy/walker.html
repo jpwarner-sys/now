@@ -269,8 +269,8 @@ const FEEDS_FOLDER="REDACTED_FEEDS_FOLDER_ID"; /* the live Drive folder id is re
 const COLS=["items","cards","decisions","floor","receipts","counters"];
 const col=name=>db?db.collection(name):null;
 
-function cache(){try{localStorage.setItem("walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
-function uncache(){try{const j=JSON.parse(localStorage.getItem("walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
+function cache(){try{localStorage.setItem("now.walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
+function uncache(){try{const j=JSON.parse(localStorage.getItem("now.walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
 
 async function put(kind,id,data){S[kind][id]=Object.assign({},S[kind][id]||{},data,{id});cache();render();const c=col(kind);if(c){try{await c.doc(id).set(S[kind][id]);}catch(e){note("write failed · "+(e&&e.code||"?"));lamp("lampStore","bad","Store write failed · "+(e&&e.code||"?")+" — kept on this phone; reload when the store is back.");}}}
 async function del(kind,id){delete S[kind][id];cache();render();const c=col(kind);if(c){try{await c.doc(id).delete();}catch(e){}}}
@@ -358,7 +358,7 @@ $("askStages").onclick=async()=>{if(!sample)return;const pick=S.items[S.bigPick]
 $("landStages").onclick=async()=>{const pick=S.items[S.bigPick];if(!pick||!S.stages)return;const n=S.stages.length;for(const s of S.stages){await land(s.first_step+" — "+s.title,pick.id);}await put("items",pick.id,{state:"parked",broken_down:true});S.bigPick=null;S.stages=null;$("stages").innerHTML="";$("landStages").hidden=true;$("stagesOut").textContent="Landed "+n+" stages as starts; the big one is parked.";go("now");};
 
 // raw door — RAW_SHAPE_v1 exactly as 6_APP/Code.gs buildRawBody_ writes it; the page keeps a receipt, never the text
-const HELD_KEY="walker.held";
+const HELD_KEY="now.walker.held";
 function heldQ(){try{return JSON.parse(localStorage.getItem(HELD_KEY)||"[]");}catch(e){return[];}}
 function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(e){}renderHeld();try{render();}catch(e){}}
 function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · tries at next DUMP":"";
@@ -402,11 +402,11 @@ $("lampStore").onclick=()=>toast($("lampStore").dataset.msg||"store");
 $("lampDoor").onclick=()=>toast($("lampDoor").dataset.msg||"door");
 
 // routes
-function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("walker.route",r);}catch(e){}}
+function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("now.walker.route",r);}catch(e){}}
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
 
 // boot
-function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("walker.route")||"now";}catch(e){}go(r);
+function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("now.walker.route")||"now";}catch(e){}go(r);
   if(window.claude&&window.claude.use){window.claude.use("db").then(d=>{if(d){db=d;dbState="db";lamp("lampStore","ok","Store live — walker_v0 is keeping your starts, cards and receipts.");subscribe();}else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");}});
     window.claude.use("sample").then(s=>{sample=s;render();});
     window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}

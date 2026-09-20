@@ -37,19 +37,21 @@ Six vectors resolve to one state: **C** Redline · **A** High drive, low control
 
 `localStorage` on the device. Six collections — items, cards, decisions, floor, receipts, counters — plus a held-dump queue. It survives reload and offline. It does not sync between devices, and nothing is sent anywhere.
 
+*Note: This app is hosted at `now.ontologyhome.ca` (no DNS resolution required, it's a local alias/subdomain). The storage keys are prefixed with `now.` to prevent collisions with other apps if hosted on a shared domain like `github.io`.*
+
 **Every copy of this app keeps its own store.** To move what is in one, use **STUCK → Your data**: *Export* writes a single JSON file to the device — starts, cards, decisions, floor readings, receipts, counters and lanes; *Import* merges one back in, newest write winning per record. Credentials are never exported. Nothing is uploaded.
 
 ## Lock
 
 A PIN gate stands in front of the app. The PIN is **set in the code**, not chosen in the app — the lock only ever *asks* for it, it never lets anyone create or change one. Edit `LOCK_PIN` near the lock code in `index.html` to whatever digits you want (the shipped default is a six-digit PIN); the keypad sizes itself to match. Every launch asks for it before the surface appears; leave `LOCK_PIN` empty (`""`) to turn the lock off.
 
-**Three wrong entries jam the lock shut.** After that the keypad is gone and the screen says so; the only way back in is a fresh install — on iOS, delete NOW from the Home Screen and add it again, which clears the app's data. The attempt tally is the one thing the lock keeps on the device (`localStorage`, `joeos.now.lock_fails`) so a lockout survives relaunching from the same icon; a correct PIN clears it. The PIN itself lives only in the page's code and is never stored or sent anywhere.
+**Three wrong entries jam the lock shut.** After that the keypad is gone and the screen says so; the only way back in is a fresh install — on iOS, delete NOW from the Home Screen and add it again, which clears the app's data. The attempt tally is the one thing the lock keeps on the device (`localStorage`, `now.lock_fails`) so a lockout survives relaunching from the same icon; a correct PIN clears it. The PIN itself lives only in the page's code and is never stored or sent anywhere.
 
 ## The raw door (optional)
 
 Off by default and shipped with no credentials — **this repo is public and carries neither a door URL nor a door key.**
 
-To turn it on, open **STUCK → Raw door** and paste two values, both kept in `localStorage` on this device (`joeos.now.door_url` and `joeos.now.door_key`) and never committed:
+To turn it on, open **STUCK → Raw door** and paste two values, both kept in `localStorage` on this device (`now.door_url` and `now.door_key`) and never committed:
 
 1. A **door URL** — the door endpoint you already have.
 2. A **door key** — the shared secret that endpoint expects in the JSON body.
