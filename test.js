@@ -45,6 +45,8 @@ if(!SRC.includes('joeos.now.door_key'))secretHits.push('missing joeos.now.door_k
 if(!SRC.includes('id="doorUrlBox"')||!SRC.includes('id="doorKeyBox"'))secretHits.push('missing Raw door fields');
 if(!SRC.includes('id="verNum">0.9.5<'))secretHits.push('version not 0.9.5');
 if(!SRC.includes('origin_surface:"walker"'))secretHits.push('missing origin_surface walker');
+if(SRC.includes('id="lock"')||/LOCK_PIN/.test(SRC)||SRC.includes('now.lock_fails'))secretHits.push('PIN lock still present');
+if(/LOCK_PIN|now\.lock_fails|Enter PIN/.test(README))secretHits.push('README still documents PIN lock');
 if(secretHits.length){
   console.log('\nDOOR SHIP  FAIL  '+JSON.stringify(secretHits));
   process.exit(1);
