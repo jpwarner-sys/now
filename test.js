@@ -78,6 +78,9 @@ if(/[?&]key=/.test(shipBlob)||/encodeURIComponent\(doorKey\(\)\)/.test(SRC)){
 if(!/doorPost\(\{op:DOOR_OP_CARDS/.test(SRC)||!/text\/plain;charset=utf-8/.test(SRC)){
   console.log('\nCARDS PULL  FAIL  ["cards pull is not POST text/plain"]');process.exit(1);
 }
+if(!/since:String\(since\)/.test(SRC)||!/floor:JSON\.stringify\(floor\)/.test(SRC)){
+  console.log('\nCARDS PULL  FAIL  ["since/floor not sent as GET-query strings"]');process.exit(1);
+}
 
 const bag={};
 const doorSrc=(grab(/var DOOR_URL_LS=[\s\S]*?function doorKeyed\(\)\{return !!\(doorUrl\(\)&&doorKey\(\)\);\}/,'door helpers')+'\n'+grab(/function dumpHoldToast\(err\)\{[\s\S]*?return "No door right now — queued on this phone\. Open STUCK → Raw door\.";\}/,'dumpHoldToast')+'\nfunction darkDoor(){return false;}\nreturn {doorKeyed,setDoorUrl,setDoorKey,dumpHoldToast};').replace(/localStorage/g,'ls');

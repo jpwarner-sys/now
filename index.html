@@ -491,7 +491,7 @@ async function pullCards(){
   const since=nowStore.get(LAST_PULL_LS)||"0";
   const floor=floorStateForDoor();
   let j;
-  try{j=await doorPost({op:DOOR_OP_CARDS,since:since,floor:floor});}
+  try{j=await doorPost({op:DOOR_OP_CARDS,since:String(since),floor:JSON.stringify(floor)});}
   catch(e){return;}
   if(!j||!j.ok)return;
   const cards=j.cards||[];
