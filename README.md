@@ -10,7 +10,7 @@ One HTML file, no build step, no dependencies, no analytics, no network calls ex
 
 **NOW** — one card, one thing. FIRST picks it; the card says *why* it picked it. Start runs a 25-minute timer; Done deletes it and counts it. Beneath: four status strips (raw, done, cards, floor) and a lanes row.
 
-**CARDS** — decisions waiting on you, one at a time, with a recommendation. The phone **pulls** open cards from the keyed door (`op=cards`) on launch, on focus, on a 5-minute heartbeat, and on a service-worker `{type:"pull"}` message. A tap POSTs `card_answer`. `later` hides a card until the next launch. Expired cards (`ttl_h`) are not answerable.
+**CARDS** — decisions waiting on you, one at a time, with a recommendation. The phone **pulls** open cards from the keyed door (POST `cards`) on launch, on focus, on a 5-minute heartbeat, and on a service-worker `{type:"pull"}` message. A tap POSTs `card_answer`. `later` hides a card until the next launch. Expired cards (`ttl_h`) are not answerable.
 
 **FLOOR** — six vectors, 1–5, tap what you know and skip what you don't. Untouched logs as ABSENT, never as 0. The chip is computed on the device from what is set; only the reading is stored.
 
@@ -50,7 +50,7 @@ To turn it on, open **STUCK → Raw door** and paste two values, both kept in `l
 1. A **door URL** — the door endpoint you already have.
 2. A **door key** — the shared secret that endpoint expects in the JSON body.
 
-Enter them once per device. DUMP then POSTs JSON `{key, text, receipt_id, schema, origin_surface}` to that URL — **the dump key stays in the JSON body.** Cards pull is a GET (`op=cards&since=&key=`) so the door can answer without a preflight. When both values are set, that keyed path is preferred.
+Enter them once per device. DUMP then POSTs JSON `{key, text, receipt_id, schema, origin_surface}` to that URL — **the dump key stays in the JSON body.** Cards pull POSTs JSON `{op:"cards", key, since, floor}` as `text/plain;charset=utf-8` (CORS-simple, same as DUMP) — **the key stays in the JSON body, never in a URL.** When both values are set, that keyed path is preferred.
 
 Without both values every dump queues on the device and the raw lamp stays red. Nothing is lost; the next dump retries the queue. The toast says which of the two is missing.
 

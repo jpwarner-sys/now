@@ -68,6 +68,16 @@ let pPass=0,pFail=[];
 for(const [name,re] of pullNeed){if(re.test(SRC))pPass++;else pFail.push(name);}
 console.log('CARDS PULL  '+pPass+'/'+pullNeed.length);
 if(pFail.length){console.log('\nCARDS PULL  FAIL  '+JSON.stringify(pFail));process.exit(1);}
+const shipBlob=SRC+'\n'+README;
+if(/[?&]op=cards/.test(shipBlob)||/op=cards&/.test(shipBlob)){
+  console.log('\nCARDS PULL  FAIL  ["op=cards in URL"]');process.exit(1);
+}
+if(/\+"&key="/.test(SRC)||/[?&]key=/.test(README)||/\?[^"'`\n]{0,200}key=/.test(shipBlob)){
+  console.log('\nCARDS PULL  FAIL  ["key= in query"]');process.exit(1);
+}
+if(!/doorPost\(\{op:DOOR_OP_CARDS/.test(SRC)||!/text\/plain;charset=utf-8/.test(SRC)){
+  console.log('\nCARDS PULL  FAIL  ["cards pull is not POST text/plain"]');process.exit(1);
+}
 
 const bag={};
 const doorSrc=(grab(/var DOOR_URL_LS=[\s\S]*?function doorKeyed\(\)\{return !!\(doorUrl\(\)&&doorKey\(\)\);\}/,'door helpers')+'\n'+grab(/function dumpHoldToast\(err\)\{[\s\S]*?return "No door right now — queued on this phone\. Open STUCK → Raw door\.";\}/,'dumpHoldToast')+'\nfunction darkDoor(){return false;}\nreturn {doorKeyed,setDoorUrl,setDoorKey,dumpHoldToast};').replace(/localStorage/g,'ls');

@@ -309,13 +309,13 @@ let db=null,sample=null,mcp=null,dbState="memory";
 /* one origin, one namespace (`now.*`), one store helper. walker.v0 / walker.held names stay as shipped. */
 function store(ns){ns=ns||"now";return{get:function(k){try{return localStorage.getItem(ns+"."+k);}catch(e){return null;}},set:function(k,v){try{if(v==null)localStorage.removeItem(ns+"."+k);else localStorage.setItem(ns+"."+k,String(v));}catch(e){}}};}
 var nowStore=store("now");
-/* Door card ops: GET op=cards; POST op card_put (seat) / card_answer (phone). Pull is truth. */
+/* Door card ops: POST op cards (phone pull) / card_put (seat) / card_answer (phone). Pull is truth. */
 var DOOR_OP_CARDS="cards", DOOR_OP_CARD_PUT="card_put", DOOR_OP_CARD_ANSWER="card_answer";
 var LAST_PULL_LS="last_pull_stamp";
 /* walker-dump-door: public repo ships neither door URL nor door key.
    Both live in localStorage (STUCK → Raw door), entered once per device.
    DUMP POSTs JSON {key,text,receipt_id,schema,origin_surface}; key never in the URL.
-   Cards GET puts the key in the query string (Stage 1 pull). */
+   Cards pull POSTs {op:"cards", key, since, floor} as text/plain; key never in the URL. */
 var DOOR_URL_LS="now.door_url", DOOR_KEY_LS="now.door_key";
 function doorUrl(){try{return (localStorage.getItem(DOOR_URL_LS)||"").trim();}catch(e){return "";}}
 function setDoorUrl(v){try{localStorage.setItem(DOOR_URL_LS,(v||"").trim());}catch(e){}}
@@ -490,15 +490,10 @@ async function pullCards(){
   await flushPendingAnswers();
   const since=nowStore.get(LAST_PULL_LS)||"0";
   const floor=floorStateForDoor();
-  const base=doorUrl();
-  const join=base.indexOf("?")>=0?"&":"?";
-  const u=base+join+"op="+encodeURIComponent(DOOR_OP_CARDS)+"&since="+encodeURIComponent(since)+"&key="+encodeURIComponent(doorKey())+"&floor="+encodeURIComponent(JSON.stringify(floor));
-  let res,raw;
-  try{res=await fetch(u,{method:"GET"});raw=await res.text();}
+  let j;
+  try{j=await doorPost({op:DOOR_OP_CARDS,since:since,floor:floor});}
   catch(e){return;}
-  if(!raw)return;
-  let j;try{j=JSON.parse(raw);}catch(e){return;}
-  if(!j||!j.ok||!res||res.status<200||res.status>=300)return;
+  if(!j||!j.ok)return;
   const cards=j.cards||[];
   for(var i=0;i<cards.length;i++){
     var c=cards[i];if(!c||!c.id)continue;
