@@ -159,7 +159,7 @@ body{padding:0 16px;padding-block:0}
 </style>
 
 <div class="phone" id="phone">
-  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.5</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
+  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.6</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
 
   <div class="screen">
 
@@ -306,9 +306,16 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 // ---------- state (memory first; db when it resolves) ----------
 const S={items:{},cards:{},decisions:{},floor:{},receipts:{},counters:{},route:"now",bigPick:null,stages:null};
 let db=null,sample=null,mcp=null,dbState="memory";
+/* one origin, one namespace (`now.*`), one store helper. walker.v0 / walker.held names stay as shipped. */
+function store(ns){ns=ns||"now";return{get:function(k){try{return localStorage.getItem(ns+"."+k);}catch(e){return null;}},set:function(k,v){try{if(v==null)localStorage.removeItem(ns+"."+k);else localStorage.setItem(ns+"."+k,String(v));}catch(e){}}};}
+var nowStore=store("now");
+/* Door card ops: GET op=cards; POST op card_put (seat) / card_answer (phone). Pull is truth. */
+var DOOR_OP_CARDS="cards", DOOR_OP_CARD_PUT="card_put", DOOR_OP_CARD_ANSWER="card_answer";
+var LAST_PULL_LS="last_pull_stamp";
 /* walker-dump-door: public repo ships neither door URL nor door key.
    Both live in localStorage (STUCK → Raw door), entered once per device.
-   DUMP POSTs JSON {key,text,receipt_id,schema,origin_surface}; key never in the URL. */
+   DUMP POSTs JSON {key,text,receipt_id,schema,origin_surface}; key never in the URL.
+   Cards GET puts the key in the query string (Stage 1 pull). */
 var DOOR_URL_LS="now.door_url", DOOR_KEY_LS="now.door_key";
 function doorUrl(){try{return (localStorage.getItem(DOOR_URL_LS)||"").trim();}catch(e){return "";}}
 function setDoorUrl(v){try{localStorage.setItem(DOOR_URL_LS,(v||"").trim());}catch(e){}}
@@ -371,7 +378,7 @@ function render(){
   const rc=Object.values(S.receipts).filter(r=>r.at&&etDay(new Date(r.at))===today);const held=heldQ().length;
   $("sLanded").textContent=(rc.length?rc.length+" to raw today":"none to raw today")+(held?" · "+held+" queued":"");$("sLandedAge").textContent=rc.length?ago(rc.sort((x,y)=>(y.at||"").localeCompare(x.at||""))[0].at):"";
   const dn=(S.counters[today]||{}).done||0;$("sDone").textContent=dn?dn+" done":"nothing yet";$("sDone").parentNode.querySelector(".age").textContent=dn?"today":"";
-  const open=Object.values(S.cards).filter(c=>c.state==="open");$("sCards").textContent=open.length?open.length+" waiting":"none waiting";$("sCardsAge").textContent=open.length?"oldest "+ago(open.sort((x,y)=>(x.at||"").localeCompare(y.at||""))[0].at):"";
+  const open=openCards();$("sCards").textContent=open.length?open.length+" waiting":"none waiting";$("sCardsAge").textContent=open.length?"oldest "+ago(open.sort((x,y)=>(x.at||"").localeCompare(y.at||""))[0].at):"";
   const f=latestFloor();if(f){const c=chipFor(f.v||{});$("sFloor").textContent=c.st+(c.name?" · "+c.name:"");$("sFloorAge").textContent=c.n+"/6 · "+etTime(new Date(f.at))+" ET · "+ago(f.at);}else{$("sFloor").textContent="never logged";$("sFloorAge").textContent="";}
   // queue
   const ql=$("queue");ql.innerHTML="";q.slice(0,8).forEach(i=>{const d=document.createElement("div");d.className="item";d.innerHTML='<div class="t">'+esc(i.text)+'</div>';const mini=document.createElement("div");mini.className="mini";const big=document.createElement("button");big.className="chipbtn"+(S.bigPick===i.id?" acc":"");big.textContent="▤";big.title="Break it down";big.onclick=()=>{S.bigPick=i.id;go("stuck");};const st=document.createElement("button");st.className="chipbtn acc";st.textContent="▶";st.title="Start";st.onclick=()=>start(i);mini.append(big,st);d.append(mini);const s=document.createElement("div");s.className="s";s.innerHTML="landed<br>"+esc(etTime(new Date(i.at)))+" ET";d.append(s);ql.append(d);});
@@ -396,12 +403,114 @@ $("tPlus").onclick=()=>{const a=active();if(!a)return;const base=paused?Date.now
 $("tPause").onclick=()=>{const a=active();if(!a)return;if(!paused){timerLeft=Date.parse(a.timer_end||0)-Date.now();paused=true;$("tPause").textContent="resume";}else{paused=false;$("tPause").textContent="pause";put("items",a.id,{timer_end:new Date(Date.now()+timerLeft).toISOString()});}};
 
 // cards
-function renderCards(){const open=Object.values(S.cards).filter(c=>c.state==="open").sort((x,y)=>(x.at||"").localeCompare(y.at||""));const deck=$("deck");deck.innerHTML="";
-  if(open.length){const c=open[0];const opts=(c.options&&c.options.length?c.options:["Yes","No"]);deck.innerHTML=(open.length>2?'<div class="c c3"></div>':'')+(open.length>1?'<div class="c c2"></div>':'')+'<div class="card first c c1"><div class="hd"><span class="tag acc">Card 1 of '+open.length+'</span><span class="stamp">waited <b>'+esc(ago(c.at))+'</b></span></div><h3>'+esc(c.q)+'</h3><div class="rec">'+(c.rec?'Recommendation: <b>'+esc(c.rec)+'</b>':'')+'</div><div class="because">'+(c.because?'needs you because: <b>'+esc(c.because)+'</b> · ':'')+'card: '+esc(c.id)+'</div><div class="ans" id="ans"></div></div>';
-    const ans=deck.querySelector("#ans");opts.forEach((o,i)=>ans.append(btn(o,i===0?"primary":"",()=>decide(c,o))));ans.append(btn("Park","ghost sm",()=>put("cards",c.id,{state:"parked"})));}
-  else deck.innerHTML='<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">Chief lands cards here. A tap writes one decision file Chief reads at its next turn.</div></div>';
+function isDoorCard(c){return !!(c&&c.door);}
+function doorCardExpired(c){if(!c||!c.at)return false;var ms=(Number(c.ttl_h)||24)*3600000;var t=Date.parse(c.at);return isFinite(t)&&Date.now()>t+ms;}
+function isOpenDoorCard(c){return isDoorCard(c)&&c.state!=="answered"&&!c.answered&&!c.answered_at&&!c.later;}
+function openCards(){
+  const local=Object.values(S.cards).filter(c=>c.state==="open");
+  const door=Object.values(S.decisions).filter(isOpenDoorCard);
+  return local.concat(door);
+}
+function floorStateForDoor(){
+  var f=latestFloor();
+  if(!f) return {state:"unknown"};
+  var c=chipFor(f.v||{});
+  var state="ok";
+  if(c.red||c.st==="C"||c.st==="!") state="fail";
+  else if(c.st==="B"||c.st==="D"||c.st==="A"||c.st==="—"||c.st==="\u2014"||c.n<6) state="thin";
+  return {st:c.st,red:!!c.red,n:c.n,state:state,at:f.at};
+}
+function renderCards(){
+  const doorOpen=Object.values(S.decisions).filter(isOpenDoorCard).sort((x,y)=>(x.at||"").localeCompare(y.at||""));
+  const localOpen=Object.values(S.cards).filter(c=>c.state==="open").sort((x,y)=>(x.at||"").localeCompare(y.at||""));
+  const open=doorOpen.concat(localOpen);
+  const deck=$("deck");deck.innerHTML="";
+  if(open.length){
+    const c=open[0];
+    const door=isDoorCard(c);
+    const expired=door&&doorCardExpired(c);
+    const q=door?(c.text||""):(c.q||"");
+    const rec=door?(c.recommend||c.rec||""):(c.rec||"");
+    const opts=(c.options&&c.options.length?c.options.slice(0,4):["Yes","No"]);
+    const tag=expired?"Expired":(door?(c.kind||"Card"):"Card");
+    deck.innerHTML=(open.length>2?'<div class="c c3"></div>':'')+(open.length>1?'<div class="c c2"></div>':'')+'<div class="card first c c1"><div class="hd"><span class="tag acc">'+esc(tag)+' 1 of '+open.length+'</span><span class="stamp">waited <b>'+esc(ago(c.at))+'</b></span></div><h3>'+esc(q)+'</h3><div class="rec">'+(rec?'Recommendation: <b>'+esc(rec)+'</b>':'')+'</div><div class="because">'+(c.because?'needs you because: <b>'+esc(c.because)+'</b> · ':'')+'card: '+esc(c.id)+'</div><div class="ans" id="ans"></div></div>';
+    const ans=deck.querySelector("#ans");
+    if(expired){ans.append(btn("Expired","ghost sm",function(){}));}
+    else{
+      opts.forEach(function(o){ans.append(btn(o,(rec&&o===rec)?"primary":"",function(){if(door)answerDoorCard(c,o);else decide(c,o);}));});
+      if(door) ans.append(btn("later","ghost sm",function(){laterDoorCard(c);}));
+      else ans.append(btn("Park","ghost sm",()=>put("cards",c.id,{state:"parked"})));
+    }
+  }
+  else deck.innerHTML='<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">A seat files a card; this phone pulls it. A tap answers through the door.</div></div>';
   const parked=Object.values(S.cards).filter(c=>c.state==="parked");$("parkedCard").hidden=!parked.length;$("parkedList").innerHTML=parked.map(c=>'<div class="park"><span>'+esc(c.q)+'</span><span class="n">'+esc(ago(c.at))+'</span></div>').join("");
-  const dec=Object.values(S.decisions).sort((x,y)=>(y.at||"").localeCompare(x.at||"")).slice(0,6);$("decidedCard").hidden=!dec.length;$("decidedList").innerHTML=dec.map(d=>'<div class="park"><span>'+esc((S.cards[d.card]||{}).q||d.card)+' → <b>'+esc(d.decision)+'</b></span><span class="n">'+esc(etTime(new Date(d.at)))+'</span></div>').join("");}
+  const dec=Object.values(S.decisions).filter(function(d){return d&&(d.decision||d.choice)&&d.state!=="open";}).sort((x,y)=>(y.at||y.answered_at||"").localeCompare(x.at||x.answered_at||"")).slice(0,6);
+  $("decidedCard").hidden=!dec.length;$("decidedList").innerHTML=dec.map(d=>'<div class="park"><span>'+esc((S.cards[d.card]||{}).q||d.text||d.card||d.id)+' → <b>'+esc(d.decision||d.choice||"")+'</b></span><span class="n">'+esc(etTime(new Date(d.at||d.answered_at)))+'</span></div>').join("");
+}
+function laterDoorCard(c){if(!c||!c.id)return;S.decisions[c.id]=Object.assign({},S.decisions[c.id]||c,{later:true,id:c.id,door:true});cache();render();}
+function clearDoorLater(){var id;for(id in S.decisions){if(S.decisions[id]&&S.decisions[id].later)S.decisions[id].later=false;}cache();}
+async function doorPost(payload){
+  const url=doorUrl(),key=doorKey();if(!url||!key)throw {code:"no_door"};
+  const body=JSON.stringify(Object.assign({key:key},payload));
+  let res,raw;
+  try{res=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});raw=await res.text();}
+  catch(e){throw {code:"network"};}
+  if(!raw)throw {code:"unauthorized"};
+  let j;try{j=JSON.parse(raw);}catch(e){throw {code:"bad_response"};}
+  if(!j||!j.ok)throw {code:"door_"+(j&&j.code||j.error||res.status||"?")};
+  return j;
+}
+async function flushPendingAnswers(){
+  var id,pending=[];
+  for(id in S.decisions){var d=S.decisions[id];if(d&&d.door&&d.pending_answer)pending.push(d);}
+  for(var i=0;i<pending.length;i++){
+    var c=pending[i];
+    try{
+      await doorPost({op:DOOR_OP_CARD_ANSWER,id:c.id,choice:c.pending_answer.choice,at:c.pending_answer.at||nowIso()});
+      S.decisions[c.id]=Object.assign({},S.decisions[c.id],{state:"answered",answered:true,choice:c.pending_answer.choice,answered_at:c.pending_answer.at,pending_answer:null,door:true});
+    }catch(e){}
+  }
+  cache();
+}
+async function answerDoorCard(c,o){
+  const live=S.decisions[c.id];if(!live||!isOpenDoorCard(live)||doorCardExpired(live))return;
+  const at=nowIso();
+  S.decisions[c.id]=Object.assign({},live,{state:"answered",answered:true,choice:o,answered_at:at,pending_answer:null,door:true,id:c.id});
+  cache();render();
+  try{await doorPost({op:DOOR_OP_CARD_ANSWER,id:c.id,choice:o,at:at});toast("Wrote: "+o);}
+  catch(e){
+    S.decisions[c.id].pending_answer={choice:o,at:at};
+    S.decisions[c.id].state="answered";
+    cache();
+    toast("Queued: "+o+" — door unreachable");
+  }
+}
+async function pullCards(){
+  if(!doorKeyed())return;
+  await flushPendingAnswers();
+  const since=nowStore.get(LAST_PULL_LS)||"0";
+  const floor=floorStateForDoor();
+  const base=doorUrl();
+  const join=base.indexOf("?")>=0?"&":"?";
+  const u=base+join+"op="+encodeURIComponent(DOOR_OP_CARDS)+"&since="+encodeURIComponent(since)+"&key="+encodeURIComponent(doorKey())+"&floor="+encodeURIComponent(JSON.stringify(floor));
+  let res,raw;
+  try{res=await fetch(u,{method:"GET"});raw=await res.text();}
+  catch(e){return;}
+  if(!raw)return;
+  let j;try{j=JSON.parse(raw);}catch(e){return;}
+  if(!j||!j.ok||!res||res.status<200||res.status>=300)return;
+  const cards=j.cards||[];
+  for(var i=0;i<cards.length;i++){
+    var c=cards[i];if(!c||!c.id)continue;
+    var prev=S.decisions[c.id]||{};
+    S.decisions[c.id]=Object.assign({},prev,c,{door:true,id:c.id,state:prev.state==="answered"?"answered":"open"});
+    if(prev.pending_answer) S.decisions[c.id].pending_answer=prev.pending_answer;
+    if(prev.later) S.decisions[c.id].later=prev.later;
+    if(prev.state==="answered"){S.decisions[c.id].state="answered";S.decisions[c.id].answered=true;}
+  }
+  if(j.stamp) nowStore.set(LAST_PULL_LS, j.stamp);
+  cache();render();
+}
 async function decide(c,o){const live=S.cards[c.id];if(!live||live.state!=="open")return;const id=nowIso().replace(/[-:.]/g,"").slice(0,18)+"_"+c.id;S.cards[c.id].state="answering";await put("decisions",id,{card:c.id,decision:o,at:nowIso(),vessel:"joe",surface:"walker",origin:"joe-word",joe_word:o});await put("cards",c.id,{state:"answered",answered:o});toast("Wrote: "+o,()=>{put("cards",c.id,{state:"open",answered:null});delete S.decisions[id];cache();render();const cc=col("decisions");if(cc)cc.doc(id).delete().catch(()=>{});});}
 
 // floor
@@ -621,7 +730,7 @@ function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classL
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
 
 // boot
-function boot(){uncache();renderHeld();let r="now";try{r=localStorage.getItem("now.walker.route")||"now";}catch(e){}go(r);
+function boot(){uncache();clearDoorLater();renderHeld();let r="now";try{r=localStorage.getItem("now.walker.route")||"now";}catch(e){}go(r);pullCards();
   if(window.claude&&window.claude.use){window.claude.use("db").then(d=>{if(d){db=d;dbState="db";lamp("lampStore","ok","Store live — walker_v0 is keeping your starts, cards and receipts.");subscribe();}else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");}});
     window.claude.use("sample").then(s=>{sample=s;render();});
     window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}
@@ -658,6 +767,9 @@ function fades(){[["firstCard",0],["queue",1]].forEach(([id,keep])=>{const el=$(
   const over=el.scrollHeight-el.clientHeight>2;el.classList.toggle("more",over);if(!keep&&!over)el.scrollTop=0;});}
 const _render=render;render=function(){_render.apply(this,arguments);$("firstCard").scrollTop=0;requestAnimationFrame(fades);};
 window.addEventListener("resize",()=>requestAnimationFrame(fades));
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")pullCards();});
+setInterval(function(){if(document.visibilityState==="visible")pullCards();},5*60*1000);
+if(navigator.serviceWorker){navigator.serviceWorker.addEventListener("message",function(e){if(e&&e.data&&e.data.type==="pull")pullCards();});}
 if(window.claude&&window.claude.hot&&window.claude.hot.snapshot){window.claude.hot.snapshot(()=>({draft:$("dumpBox").value,route:S.route}));}
 const hotStart=data=>{boot();if(data&&data.draft)$("dumpBox").value=data.draft;if(data&&data.route)go(data.route);};
 if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(hotStart);else hotStart((window.claude&&window.claude.hot&&window.claude.hot.data)||{});
