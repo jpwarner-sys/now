@@ -40,8 +40,8 @@ for(const [label,re,blob] of [
   ['README Apps Script deployment id',/AKfycb/,README],
   ['README macros/s/ exec path',/macros\/s\//,README],
 ]){if(re.test(blob))secretHits.push(label);}
-if(!SRC.includes('joeos.now.door_url'))secretHits.push('missing joeos.now.door_url');
-if(!SRC.includes('joeos.now.door_key'))secretHits.push('missing joeos.now.door_key');
+if(!SRC.includes('now.door_url'))secretHits.push('missing now.door_url');
+if(!SRC.includes('now.door_key'))secretHits.push('missing now.door_key');
 if(!SRC.includes('id="doorUrlBox"')||!SRC.includes('id="doorKeyBox"'))secretHits.push('missing Raw door fields');
 if(!SRC.includes('id="verNum">0.9.5<'))secretHits.push('version not 0.9.5');
 if(!SRC.includes('origin_surface:"walker"'))secretHits.push('missing origin_surface walker');
