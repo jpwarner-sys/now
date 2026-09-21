@@ -72,7 +72,7 @@ const shipBlob=SRC+'\n'+README;
 if(/[?&]op=cards/.test(shipBlob)||/op=cards&/.test(shipBlob)){
   console.log('\nCARDS PULL  FAIL  ["op=cards in URL"]');process.exit(1);
 }
-if(/\+"&key="/.test(SRC)||/[?&]key=/.test(README)||/\?[^"'`\n]{0,200}key=/.test(shipBlob)){
+if(/[?&]key=/.test(shipBlob)||/encodeURIComponent\(doorKey\(\)\)/.test(SRC)){
   console.log('\nCARDS PULL  FAIL  ["key= in query"]');process.exit(1);
 }
 if(!/doorPost\(\{op:DOOR_OP_CARDS/.test(SRC)||!/text\/plain;charset=utf-8/.test(SRC)){
