@@ -43,15 +43,44 @@ for(const [label,re,blob] of [
 if(!SRC.includes('now.door_url'))secretHits.push('missing now.door_url');
 if(!SRC.includes('now.door_key'))secretHits.push('missing now.door_key');
 if(!SRC.includes('id="doorUrlBox"')||!SRC.includes('id="doorKeyBox"'))secretHits.push('missing Raw door fields');
-if(!SRC.includes('id="verNum">0.9.5<'))secretHits.push('version not 0.9.5');
+if(!SRC.includes('id="verNum">0.9.6<'))secretHits.push('version not 0.9.6');
 if(!SRC.includes('origin_surface:"walker"'))secretHits.push('missing origin_surface walker');
 if(SRC.includes('id="lock"')||/LOCK_PIN/.test(SRC)||SRC.includes('now.lock_fails'))secretHits.push('PIN lock still present');
 if(/LOCK_PIN|now\.lock_fails|Enter PIN/.test(README))secretHits.push('README still documents PIN lock');
+if(!SRC.includes('now.walker.v0'))secretHits.push('missing now.walker.v0');
+if(!SRC.includes('now.walker.held'))secretHits.push('missing now.walker.held');
 if(secretHits.length){
   console.log('\nDOOR SHIP  FAIL  '+JSON.stringify(secretHits));
   process.exit(1);
 }
 console.log('door ship: no exec URL / key in index.html or README; localStorage fields present');
+
+const pullNeed=[
+  ['card_put',/card_put/],
+  ['card_answer',/card_answer/],
+  ['last_pull_stamp',/last_pull_stamp/],
+  ['pullCards',/function pullCards\(/],
+  ['visibilitychange',/visibilitychange/],
+  ['heartbeat 5 min',/5\s*\*\s*60\s*\*\s*1000/],
+  ['sw type pull',/type\s*===\s*"pull"/],
+];
+let pPass=0,pFail=[];
+for(const [name,re] of pullNeed){if(re.test(SRC))pPass++;else pFail.push(name);}
+console.log('CARDS PULL  '+pPass+'/'+pullNeed.length);
+if(pFail.length){console.log('\nCARDS PULL  FAIL  '+JSON.stringify(pFail));process.exit(1);}
+const shipBlob=SRC+'\n'+README;
+if(/[?&]op=cards/.test(shipBlob)||/op=cards&/.test(shipBlob)){
+  console.log('\nCARDS PULL  FAIL  ["op=cards in URL"]');process.exit(1);
+}
+if(/[?&]key=/.test(shipBlob)||/encodeURIComponent\(doorKey\(\)\)/.test(SRC)){
+  console.log('\nCARDS PULL  FAIL  ["key= in query"]');process.exit(1);
+}
+if(!/doorPost\(\{op:DOOR_OP_CARDS/.test(SRC)||!/text\/plain;charset=utf-8/.test(SRC)){
+  console.log('\nCARDS PULL  FAIL  ["cards pull is not POST text/plain"]');process.exit(1);
+}
+if(!/since:String\(since\)/.test(SRC)||!/floor:JSON\.stringify\(floor\)/.test(SRC)){
+  console.log('\nCARDS PULL  FAIL  ["since/floor not sent as GET-query strings"]');process.exit(1);
+}
 
 const bag={};
 const doorSrc=(grab(/var DOOR_URL_LS=[\s\S]*?function doorKeyed\(\)\{return !!\(doorUrl\(\)&&doorKey\(\)\);\}/,'door helpers')+'\n'+grab(/function dumpHoldToast\(err\)\{[\s\S]*?return "No door right now — queued on this phone\. Open STUCK → Raw door\.";\}/,'dumpHoldToast')+'\nfunction darkDoor(){return false;}\nreturn {doorKeyed,setDoorUrl,setDoorKey,dumpHoldToast};').replace(/localStorage/g,'ls');
