@@ -20,7 +20,7 @@ Everything outbound is an **envelope** in the phone's outbox, `{id, op, at, body
 
 ```json
 { "key": "…", "text": "call the plumber", "receipt_id": "<uuid>",
-  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.1.0" }
+  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.1.1" }
 ```
 
 No `op` field: the door reads a body without one as a dump. `receipt_id` is the envelope id (a UUID). The door writes one `raw_<UTC stamp>_<receipt_id>.md` into the intake feeds with the RAW_SHAPE front matter, and answers:
@@ -88,6 +88,8 @@ Every error word lands in one of four buckets (`CORE.classify`):
 | **final** | `expired` `not_found` `choice_invalid` `choice_required` `id_required` `schema_or_origin` `receipt_id_required` `receipt_id_invalid` `surface_version_invalid` `payload_too_large` | This envelope will never be taken as it is. An answer is dropped and its card says *not taken · expired*. A dump keeps its text on the phone, marked refused, until you retry it (STUCK → The door) — a dump is never thrown away for you. |
 | **refused** | `unknown_op` `unsupported` `bad_op` `not_implemented` | The door does not know this op. It is parked with the others (below). |
 | **retry** | anything else | Keep it; try next round. |
+
+**A web page is not the door.** The door's code answers JSON or an empty body, never a page (all of `doPost` sits in one `try` that answers `server`). A page in its place (`bad_response`) comes from Google, in front of the door. After this door has answered properly within the hour, the phone calls it a hiccup, says so, and tries again in 20 s. Before that — or after saving a different URL — the URL is wrong. The phone keeps a few plain words of the page (no link, host or token) to show on STUCK.
 
 **The door does not know the clock.** 02:00–05:59 ET (America/Toronto, never a fixed UTC hour) the phone sends nothing and pulls nothing. DUMP still works: it holds on the phone, and goes after six (R-068).
 

@@ -14,6 +14,8 @@
  *   - cards: `card.at > since` string compare; the hold is PER CARD, set when it was filed; an ok
  *     (or unknown) pull releases every held card; a thin pull hides only cards filed while thin
  *   - GET with no key → "walker-door"
+ *   - state.htmlNext = N: the next N POSTs get an HTML error page, as Google serves when it, not the
+ *     door, answers (the door's own code answers JSON or an empty body, never a page)
  * mode "v2" adds the proposed ops (DOOR.md §5): it advertises them and takes floor/done/lane,
  * and returns starts and a brief on the pull.
  *
@@ -41,6 +43,7 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     brief: null,        // v2
     down: false,        // true = drop every connection (network failure)
     delayMs: 0,         // a slow door
+    htmlNext: 0,        // the next N POSTs get Google's error page instead of the door's JSON
     lastFloor: null,
     seen: new Map(),    // receipt_id → first reply (7-day de-dup)
     rate: [],           // accepted dump writes, ms
@@ -171,7 +174,11 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
         const buf = Buffer.concat(chunks);
         state.contentTypes = (state.contentTypes || []).concat(req.headers["content-type"]);
         let out = "";
-        if (buf.length <= 32768) {                    // bytes, as the door counts them
+        if (state.htmlNext > 0) {                     // Google answered, not the door (the door's code never sends a page)
+          state.htmlNext--;
+          out = '<!DOCTYPE html><html><head><title>Error</title></head><body><div>Sorry, unable to open the file at this time.</div>' +
+            '<p>Please try again: https://door.example.invalid/exec/abcdefghijklmnopqrstuvwx</p></body></html>';
+        } else if (buf.length <= 32768) {             // bytes, as the door counts them
           let b = null;
           try { b = JSON.parse(buf.toString("utf8")); } catch { b = null; }
           if (b && typeof b === "object" && !Array.isArray(b) && b.key === key) out = JSON.stringify(reply(b));
@@ -184,8 +191,9 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     }
     if (req.url.startsWith("/echo") && req.method === "GET") {
       const id = new URL(req.url, "http://x").searchParams.get("id");
-      res.writeHead(200, { ...cors, "Content-Type": "application/json" });
-      res.end(echoes.get(id) || "");
+      const body = echoes.get(id) || "";
+      res.writeHead(200, { ...cors, "Content-Type": body.startsWith("<") ? "text/html" : "application/json" });
+      res.end(body);
       return;
     }
     res.writeHead(404, cors);

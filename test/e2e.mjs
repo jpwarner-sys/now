@@ -777,6 +777,43 @@ await block("an answer the door already had is shown as that, not as sent", asyn
   await p.context().close(); await d.close();
 });
 
+/* =================================================================== 1.1.1 */
+console.log("\n1.1.1 — WHAT THE LIVE PHONE SHOWED");
+await block("a Google error page after the door has worked is a hiccup: named for what it is, never 'URL is wrong', tried again in 20 s", async () => {
+  const d = await startMockDoor({ key: "k-hiccup-1" });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T20:00:00Z" });          // 16:00 ET
+  await until(async () => (await store(p)).sync.pulled_at, "a good pull first");
+  d.state.htmlNext = 1;                                                           // Google answers the next one, not the door
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(async () => (await store(p)).sync.err_in === "bad_response", "the page came back");
+  assert(!/bad/.test(await lampClass(p, "lampIn")), "IN is not red", await lampClass(p, "lampIn"));
+  await p.click("#lampIn");
+  const said = await toastText(p);
+  assert(/error page/.test(said) && !/URL is wrong/.test(said), "the lamp names a hiccup, not a wrong URL", said);
+  await tab(p, "stuck");
+  const stamps = await p.textContent("#doorStamps");
+  assert(/Sorry, unable to open the file/.test(stamps), "STUCK says what came back", stamps);
+  assert(!/example|invalid|abcdefgh|https/.test(stamps), "words only: no link, host or token", stamps);
+  await p.clock.runFor(21000);                                                    // the retry, not the five-minute sync
+  await until(async () => !(await store(p)).sync.err_in, "the retry cleared it");
+  assert(!(await store(p)).sync.err_hint, "and what came back with it");
+  await p.context().close(); await d.close();
+});
+
+await block("a door that has never answered, and sends a web page, is named wrong — even saved over one that worked", async () => {
+  const good = await startMockDoor({ key: "k-hiccup-2" });
+  const p = await keyedPhone(good);
+  await until(async () => (await store(p)).sync.pulled_at, "the first door worked");
+  const wrong = await startMockDoor({ key: "k-hiccup-3" });
+  wrong.state.htmlNext = 99;
+  await setDoor(p, wrong.url, wrong.key);
+  await until(async () => /Door URL is wrong/.test(await toastText(p)), "Sync now says the URL is wrong");
+  assert(/bad/.test(await lampClass(p, "lampIn")), "IN is red");
+  const s = await store(p);
+  assert(!s.sync.pulled_at, "the new door starts from never", s.sync.pulled_at);
+  await p.context().close(); await good.close(); await wrong.close();
+});
+
 /* =================================================================== guards */
 console.log("\nGUARDS — PROMISES THAT HAD NO TEST");
 
