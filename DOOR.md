@@ -113,7 +113,7 @@ Each of these is a door change for the door's own seat. None of them changes a l
 The phone pulls whatever is in the door. Today, **nothing files cards into the door**: the seat that turns stack questions into cards writes them somewhere the hosted phone cannot reach, and the pipe that carries decisions to the ledger reads from that same place. Until one of these lands, the CARDS tab can only ever show cards a person filed by hand:
 
 - **Cards in:** the card-filing seat calls `card_put` (§3) instead of writing elsewhere. A seat needs a key to do that — or the door reads a folder the seats already write to, and no seat ever holds the key. That choice is the operator's.
-- **Answers out:** the ledger pipe reads decisions from the door (a keyed read of answered cards — the door already keeps them 7 days) instead of from the other copy.
+- **Answers out:** the ledger pipe reads decisions from the door instead of from the other copy. The @3 door has no op for that: an answer is kept only as a raw decision record (`origin_surface: walker_decision`), and nothing tells a seat *which* choice was tapped. The proposed v4 writes each answer as a small file to a folder the pipe can read.
 - **Floor, done, lanes out:** §5.2–5.4.
 
 ## 7. Testing this contract
