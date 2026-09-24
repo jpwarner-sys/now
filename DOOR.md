@@ -20,7 +20,7 @@ Everything outbound is an **envelope** in the phone's outbox, `{id, op, at, body
 
 ```json
 { "key": "…", "text": "call the plumber", "receipt_id": "<uuid>",
-  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.0.0" }
+  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.0.1" }
 ```
 
 No `op` field: the door reads a body without one as a dump. `receipt_id` is the envelope id (a UUID). The door writes one `raw_<UTC stamp>_<receipt_id>.md` into the intake feeds with the RAW_SHAPE front matter, and answers:

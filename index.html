@@ -135,6 +135,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 .brief{flex:0 0 auto;display:flex;gap:10px;align-items:baseline;min-width:0;background:none;border:0;padding:0 4px;margin:0 0 -4px;font:inherit;font-size:16.5px;color:var(--ink2);text-align:left;cursor:pointer}
 .brief .k{flex:none;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.16em;color:var(--acc);text-transform:uppercase}
 .brief #sBrief{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#doorActs,#storeActs{flex-wrap:wrap}
 .dark .card,.dark .tabbar .tab:not(.on){opacity:.55}
 .darknote{text-align:center;padding:40px 12px 20px;color:var(--ink2);font-size:18px}
 .darknote .big{font-family:var(--mono);font-size:14.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:10px}
@@ -173,7 +174,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.0.0</b></span>
+    <span class="ver">NOW <b id="verNum">1.0.1</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -545,7 +546,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.0.0";
+  const BUILD = "1.0.1";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -611,7 +612,7 @@ const CORE = (function () {
   const pending = () => S.outbox.filter((e) => sendable(e) && !e.dead);
   const parkedOut = () => S.outbox.filter((e) => !sendable(e));
   const deadOut = () => S.outbox.filter((e) => e.dead);
-  let flushing = null, flushTimer = null;
+  let flushing = null, flushingOnly = null, flushTimer = null;
   function enqueue(op, body, opts) {
     const env = { id: (opts && opts.id) || uid(), op: op, at: nowIso(), body: body, tries: 0 };
     if (opts && opts.holdMs) env.hold_until = Date.now() + opts.holdMs;
@@ -625,8 +626,11 @@ const CORE = (function () {
     return env;
   }
   function scheduleFlush(ms) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, ms || 0); }
-  function flush() {
-    if (flushing) return flushing;
+  /* `only` limits a flush to some ops (sync sends answers first). A full flush asked for while a
+     limited one is in the air runs right after it, so a DUMP is never left behind. */
+  function flush(only) {
+    if (flushing) return only || !flushingOnly ? flushing : flushing.then(() => flush());
+    flushingOnly = only || null;
     flushing = (async () => {
       if (!keyed() || C.isNight()) return;
       const tried = new Set();
@@ -634,7 +638,7 @@ const CORE = (function () {
       // Round after round until nothing new arrived meanwhile — a second DUMP made while the
       // first is in the air goes in this flush, not five minutes later.
       while (!stopped) {
-        const round = S.outbox.filter((e) => !tried.has(e.id));
+        const round = S.outbox.filter((e) => !tried.has(e.id) && (!only || only.indexOf(e.op) >= 0));
         if (!round.length) break;
         for (const env of round) {
           tried.add(env.id);
@@ -643,6 +647,7 @@ const CORE = (function () {
           if (env.hold_until && env.hold_until > Date.now()) { later = Math.min(later || Infinity, env.hold_until); continue; }
           try {
             acked(env, await post(C.wire(env, doorKey(), BUILD)));
+            commit();          // each one is saved and shown the moment the door takes it — a long queue counts down, and a killed app does not resend what already went
           } catch (e) {
             const code = (e && e.code) || "?";
             const verdict = C.classify(code);
@@ -655,7 +660,7 @@ const CORE = (function () {
         }
       }
       if (later) scheduleFlush(later - Date.now() + 50);
-    })().finally(() => { flushing = null; commit(); });
+    })().finally(() => { flushing = null; flushingOnly = null; commit(); });
     return flushing;
   }
   /* The door will never take this one as it is. An answer to a card that expired or vanished
@@ -698,8 +703,12 @@ const CORE = (function () {
     })().finally(() => { pulling = null; commit(); });
     return pulling;
   }
-  /* Answers go out before the pull, so the cards that come back already know. */
-  async function sync() { await flush(); await pull(); }
+  /* Answers go out before the pull, so the cards that come back already know. Dumps do not change
+     what the stack asks, so the pull runs beside them — a long dump queue never holds up the cards. */
+  async function sync() {
+    await flush(["card_answer"]);
+    await Promise.all([pull(), flush()]);
+  }
 
   /* ---------- starts: the only prose kept on the phone, deleted at Done ---------- */
   const startsIn = (state) => Object.values(S.starts).filter((x) => x.state === state).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
