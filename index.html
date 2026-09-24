@@ -3,10 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<style>html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Walker">
+<meta name="theme-color" content="#0b0f13">
+<link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
 <title>NOW</title>
-</head>
-<body>
 <style>
 :root{
   --bg:#0b0f13; --card:#12171d; --well:#0c1014; --edge:#202833; --edge2:#2b3542;
@@ -19,30 +25,35 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html,body{margin:0;background:#05070a;color:var(--ink);font-family:var(--sans);font-size:19px;line-height:1.4;min-height:100%}
-body{padding:0 16px;padding-block:0}
+body{padding:0 16px}
 .phone{max-width:430px;height:100dvh;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
-@media (min-width:480px){.phone{height:calc(100dvh - 32px);margin:16px auto;border:1px solid var(--edge);border-radius:28px;overflow:hidden}}
+@media (min-width:480px){.phone{height:calc(100dvh - 32px);margin:16px auto;border:1px solid var(--edge);border-radius:28px}}
 .status{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:calc(5px + env(safe-area-inset-top)) 14px 2px;font-family:var(--mono);font-size:13px;font-weight:600;white-space:nowrap;color:var(--ink3);letter-spacing:.14em;text-transform:uppercase}
+.ver{color:var(--ink3);letter-spacing:.04em;flex:none}
+.lamps{display:flex;gap:14px;align-items:center;flex:none}
+.lamp{display:inline-flex;gap:7px;align-items:center;background:none;border:0;padding:4px 2px;cursor:pointer;font:inherit;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);line-height:1}
+.lamp .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
+.lamp.ok .dot{background:var(--acc);box-shadow:0 0 6px var(--accDim)}
+.lamp.warn .dot{background:var(--warn)}
+.lamp.bad .dot{background:var(--bad)}
+.lamp.bad .lb,.lamp.warn .lb{color:var(--ink2)}
+
 .screen{flex:1;padding:6px 14px 0;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden}
-#nowBody{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
+.route{display:none;flex-direction:column;gap:12px;flex:1;min-height:0}
+.route.on{display:flex;overflow-y:auto;overscroll-behavior:contain}
 #r-now.on{overflow:hidden}
+#nowBody{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
+#firstCard{flex:2 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;overflow-y:auto;overscroll-behavior:contain}
+#firstCard.more{justify-content:flex-start}
 #queueCard{flex:1 1 0;min-height:104px;display:flex;flex-direction:column;overflow:hidden}
 #queue{overflow-y:auto;min-height:0;overscroll-behavior:contain;padding-bottom:4px}
 .more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent)}
-#nowBody .card.first{flex:2 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;overflow-y:auto;overscroll-behavior:contain}
-#nowBody .card.first.more{justify-content:flex-start}
-#nowBody .fill{flex:0 0 auto}
-.fill{display:grid;grid-template-columns:max-content 1fr;column-gap:0;align-items:baseline}
-.fill>.strip>.k,.fill>.strip>.v{padding-top:10px}
-.fill>.strip:not(:first-child)>.k,.fill>.strip:not(:first-child)>.v{border-top:1px solid var(--edge)}
-.fill>.strip>.age{padding-bottom:9px}
-.fill>.strip>.age:empty{padding:0 0 9px}
 
-.route{display:none;flex-direction:column;gap:12px;flex:1;min-height:0}
-.route.on{display:flex;overflow-y:auto;overscroll-behavior:contain}
 .tag{flex:0 0 auto;font-family:var(--mono);font-size:14px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase}
 .tag.acc{color:var(--acc)}
 .card{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:16px 18px}
+.card.thin{padding:6px 16px}
+.card.thin>.tag{padding:8px 0 4px}
 .card.first{border-color:var(--accDim);background:linear-gradient(180deg,var(--accBg),var(--card))}
 .first h2{flex:0 0 auto;font-size:26.5px;line-height:1.25;margin:6px 0 4px;font-weight:700;letter-spacing:-.01em;text-wrap:balance;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
 .first h2.long{font-size:21.5px;line-height:1.3;-webkit-line-clamp:4}
@@ -50,11 +61,15 @@ body{padding:0 16px;padding-block:0}
 .row{display:flex;align-items:center;gap:10px}
 .row.between{justify-content:space-between}
 .act{display:flex;gap:10px;margin-top:12px}
+
+.fill{flex:0 0 auto;display:grid;grid-template-columns:max-content 1fr;align-items:baseline}
 .strip{display:contents}
-.strip .k{grid-column:1;font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.16em;color:var(--ink2);text-transform:uppercase;align-self:baseline;padding-right:14px}
-.strip .v{grid-column:2;color:var(--ink);font-size:18px;overflow-wrap:anywhere;align-self:baseline}
-.strip .age{grid-column:2;font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
-.strip .age:empty{display:none}
+.strip .k{grid-column:1;font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.16em;color:var(--ink2);text-transform:uppercase;padding:10px 14px 0 0}
+.strip .v{grid-column:2;color:var(--ink);font-size:18px;overflow-wrap:anywhere;padding-top:10px}
+.strip .age{grid-column:2;font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums;padding-bottom:9px}
+.strip .age:empty{padding:0 0 9px}
+.fill>.strip:not(:first-child)>.k,.fill>.strip:not(:first-child)>.v{border-top:1px solid var(--edge)}
+
 .btn{appearance:none;border:1.5px solid var(--edge2);background:var(--well);color:var(--ink);font:inherit;font-weight:600;font-size:19px;line-height:1;padding:11px 14px 13px;border-radius:14px;min-height:54px;cursor:pointer;flex:1;display:inline-flex;align-items:center;justify-content:center;text-align:center}
 .btn.primary{background:var(--acc);border-color:var(--acc);color:#04120b}
 .btn.ghost{background:transparent;border-color:transparent;color:var(--ink2)}
@@ -63,44 +78,20 @@ body{padding:0 16px;padding-block:0}
 .btn:focus-visible,textarea:focus-visible,input:focus-visible,.seg span:focus-visible,.tab:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .stamp{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stamp b{color:var(--ink3);font-weight:600}
-.lamps{display:flex;gap:14px;align-items:center;flex:none}
-.ver{color:var(--ink3);letter-spacing:.04em;flex:none}
-.lamp{display:inline-flex;gap:7px;align-items:center;background:none;border:0;padding:4px 2px;cursor:pointer;font:inherit;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);line-height:1}
-.lamp .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none;box-shadow:0 0 0 0 transparent}
-.lamp.ok .dot{background:var(--acc);box-shadow:0 0 6px var(--accDim)}
-.lamp.warn .dot{background:var(--warn)}
-.lamp.bad .dot{background:var(--bad)}
-.lamp.bad .lb,.lamp.warn .lb{color:var(--ink2)}
-.banner{font-family:var(--mono);font-size:14px;letter-spacing:.03em;color:var(--ink2);background:var(--well);border:1px solid var(--edge);border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center}.banner .n{white-space:nowrap;flex:none}
-.banner.stale{border-color:var(--warnEdge);color:var(--warn)}
-.dump{margin-top:auto;padding:8px 14px 6px;display:flex;flex-direction:column;gap:7px}
-.btn.land{width:100%;min-height:46px;padding:9px 14px 11px;font-size:20.5px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}.btn.land.hold{background:var(--well);color:var(--acc);border-color:var(--acc)}
-.dump textarea{width:100%;background:var(--well);border:1.5px solid var(--edge2);border-radius:14px;color:var(--ink);font:inherit;font-size:20.5px;text-align:center;padding:10px 16px 11px;min-height:53px;max-height:200px;resize:none;outline:none}
-.dump textarea:focus{border-color:var(--acc)}
-.dump textarea::placeholder{text-align:center}
-.dump .held{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.tabbar{display:flex;justify-content:space-around;padding:4px 4px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--bg)}
-.tab{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:.06em;color:var(--ink3);text-align:center;padding:4px 10px 5px;border-radius:10px;min-width:66px;background:none;border:0;cursor:pointer;line-height:1}
-.tab.on{color:var(--acc);background:var(--accBg)}
-.tab .g{display:block;margin:0 auto 3px;line-height:0;color:inherit}
-.tab.on .g{filter:drop-shadow(0 0 5px var(--accDim))}
-.toast{position:fixed;left:50%;transform:translateX(-50%);width:min(398px,calc(100vw - 32px));bottom:110px;background:var(--card);border:1px solid var(--accDim);border-radius:12px;padding:12px 14px;font-size:17.5px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:5}
-.toast .u{font-family:var(--mono);font-size:14.5px;color:var(--acc);letter-spacing:.1em;background:none;border:0;cursor:pointer;padding:5px 8px 7px;line-height:1}
-.toast[hidden]{display:none}
-.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.muted{color:var(--ink3)}
+.stamp.wrap{white-space:normal}
+
 .list{display:flex;flex-direction:column}
 .item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--edge)}
 .item:first-child{border-top:0}
 .item .t{flex:1;font-size:18px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.item .t.done{color:var(--ink3);text-decoration:line-through}
 .item .s{font-family:var(--mono);font-size:13.5px;color:var(--dim);text-align:right;flex:none;line-height:1.4;font-variant-numeric:tabular-nums}
-.item .s.ok{color:var(--acc)}
-.item .mini{display:flex;gap:6px;flex:none}
+.item .s.acc{color:var(--acc)}
+.mini{display:flex;gap:6px;flex:none}
 .chipbtn{font-family:var(--mono);font-size:13.5px;letter-spacing:.08em;border:1px solid var(--edge2);background:var(--well);color:var(--ink2);border-radius:9px;padding:5px 9px 7px;line-height:1;cursor:pointer;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
 .chipbtn.acc{border-color:var(--accDim);color:var(--acc)}
 .timer{font-family:var(--mono);font-size:41px;font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--ink);line-height:1}
 .timer.over{color:var(--warn)}
+
 .deck{position:relative;margin-top:10px}
 .deck .c{border-radius:16px}
 .deck .c3{position:absolute;left:12px;right:12px;top:-10px;height:100%;background:var(--well);border:1px solid var(--edge);z-index:0}
@@ -110,11 +101,15 @@ body{padding:0 16px;padding-block:0}
 .deck h3{font-size:24px;line-height:1.25;margin:8px 0 6px;font-weight:700;letter-spacing:-.01em;text-wrap:balance;overflow-wrap:anywhere}
 .rec{font-size:17.5px;color:var(--ink2);overflow-wrap:anywhere}
 .rec b{color:var(--ink)}
-.because{font-family:var(--mono);font-size:13.5px;color:var(--dim);margin-top:8px;letter-spacing:.04em}
+.because{font-family:var(--mono);font-size:13.5px;color:var(--dim);margin-top:8px;letter-spacing:.04em;overflow-wrap:anywhere}
 .because b{color:var(--ink3)}
-.ans{display:flex;gap:8px;margin-top:12px}
+.ans{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.ans .btn{flex:1 1 40%}
+.ans .btn.sm{flex:none}
 .park{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--edge);font-size:16px;color:var(--ink2)}
-.park:first-of-type{border-top:0}
+.park:first-child{border-top:0}
+.park .n{flex:none}
+
 .vec{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--edge)}
 .vec:first-child{border-top:0}
 .vec .nm{font-family:var(--mono);font-size:14px;letter-spacing:.1em;color:var(--ink3);text-transform:uppercase;width:100px;flex:none}
@@ -122,31 +117,28 @@ body{padding:0 16px;padding-block:0}
 .seg span{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center;padding-bottom:2px;line-height:1;border:1.5px dashed var(--edge2);border-radius:10px;font-family:var(--mono);font-size:17px;color:var(--ink3);cursor:pointer;user-select:none}
 .seg span.set{border-style:solid;color:var(--ink2)}
 .seg span.on{background:var(--accBg);border:1.5px solid var(--acc);color:var(--acc);font-weight:700}
-.absent{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em}
+.absent{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;padding:8px 0 6px}
 .chipbox{display:flex;align-items:center;gap:14px}
 .chipbox .st{font-family:var(--mono);font-size:36px;font-weight:700;color:var(--acc);width:44px;text-align:center;flex:none}
 .chipbox .st.bad{color:var(--bad)}
 .chipbox .st.warn{color:var(--warn)}
 .chipbox .st.off{color:var(--ink3)}
 .chipbox .line{font-size:17.5px;color:var(--ink2)}
+
 .ask{display:flex;flex-direction:column;gap:10px}
 .answer{font-size:20.5px;line-height:1.4;min-height:24px;overflow-wrap:anywhere}
-.answer.muted{font-size:17.5px}
-.stages{display:flex;flex-direction:column}
-.stage{padding:10px 0;border-top:1px solid var(--edge);display:flex;gap:10px;align-items:flex-start}
-.stage:first-child{border-top:0}
-.stage .no{font-family:var(--mono);font-size:13.5px;color:var(--ink3);width:20px;flex:none;padding-top:3px}
-.stage .b{flex:1}
-.stage .b .h{font-weight:600;font-size:18px}
-.stage .b .f{color:var(--ink2);font-size:17px}
+.answer.muted{font-size:17.5px;color:var(--ink3)}
+.field{width:100%;background:var(--well);border:1.5px solid var(--edge2);border-radius:12px;color:var(--ink);font:inherit;font-family:var(--mono);font-size:14.5px;padding:10px 12px 11px;outline:none}
+.field:focus{border-color:var(--acc)}
+textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:vertical}
+
+.brief{flex:0 0 auto;display:flex;gap:10px;align-items:baseline;min-width:0;background:none;border:0;padding:0 4px;margin:0 0 -4px;font:inherit;font-size:16.5px;color:var(--ink2);text-align:left;cursor:pointer}
+.brief .k{flex:none;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.16em;color:var(--acc);text-transform:uppercase}
+.brief #sBrief{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dark .card,.dark .tabbar .tab:not(.on){opacity:.55}
 .darknote{text-align:center;padding:40px 12px 20px;color:var(--ink2);font-size:18px}
 .darknote .big{font-family:var(--mono);font-size:14.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:10px}
-.sr{position:absolute;left:-9999px}
-#doorUrlBox,#doorKeyBox{width:100%;margin-top:8px;background:var(--well);border:1.5px solid var(--edge2);border-radius:12px;color:var(--ink);font:inherit;font-family:var(--mono);font-size:14.5px;padding:10px 12px 11px;outline:none}
-#doorUrlBox:focus,#doorKeyBox:focus{border-color:var(--acc)}
-#doorCfg summary{list-style:none}#doorCfg summary::-webkit-details-marker{display:none}
-#doorCfg summary:before{content:"▸ ";color:var(--dim)}#doorCfg[open] summary:before{content:"▾ "}
+
 .lanerow{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;width:100%;margin:2px 0 1px}
 .lane{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--well);border:1.5px solid var(--edge2);border-radius:10px;padding:5px 3px 6px;cursor:pointer;font:inherit;color:var(--ink2);min-height:42px;line-height:1.1}
 .lane .l{font-size:13.5px;font-weight:600;color:var(--ink2);white-space:nowrap}
@@ -155,125 +147,130 @@ body{padding:0 16px;padding-block:0}
 .lane.on .l{color:var(--acc)}
 .lane.on .s{color:var(--acc);opacity:.75}
 .lane.skip{opacity:.4}
+
+.dump{margin-top:auto;padding:8px 14px 6px;display:flex;flex-direction:column;gap:7px}
+.btn.land{width:100%;min-height:46px;padding:9px 14px 11px;font-size:20.5px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.btn.land.hold{background:var(--well);color:var(--acc);border-color:var(--acc)}
+.dump textarea{width:100%;background:var(--well);border:1.5px solid var(--edge2);border-radius:14px;color:var(--ink);font:inherit;font-size:20.5px;text-align:center;padding:10px 16px 11px;min-height:53px;max-height:200px;resize:none;outline:none}
+.dump textarea:focus{border-color:var(--acc)}
+.dump textarea::placeholder{text-align:center}
+.dump .held{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;text-align:center}
+
+.tabbar{display:flex;justify-content:space-around;padding:4px 4px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--bg)}
+.tab{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:.06em;color:var(--ink3);text-align:center;padding:4px 10px 5px;border-radius:10px;min-width:66px;background:none;border:0;cursor:pointer;line-height:1}
+.tab.on{color:var(--acc);background:var(--accBg)}
+.tab .g{display:block;margin:0 auto 3px;line-height:0;color:inherit}
+.tab.on .g{filter:drop-shadow(0 0 5px var(--accDim))}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);width:min(398px,calc(100vw - 32px));bottom:110px;background:var(--card);border:1px solid var(--accDim);border-radius:12px;padding:12px 14px;font-size:17.5px;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:5}
+.toast .u{font-family:var(--mono);font-size:14.5px;color:var(--acc);letter-spacing:.1em;background:none;border:0;cursor:pointer;padding:5px 8px 7px;line-height:1;flex:none}
+.muted{color:var(--ink3)}
+.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sr{position:absolute;left:-9999px}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}to{transform:translate(-50%,0);opacity:1}}}
 </style>
-
+</head>
+<body>
 <div class="phone" id="phone">
-  <div class="status"><span id="clock" class="ver">NOW <b id="verNum">0.9.6</b></span><span class="lamps"><button class="lamp wait" id="lampStore" aria-label="store status"><span class="lb">store</span><i class="dot"></i></button><button class="lamp wait" id="lampDoor" aria-label="raw door status"><span class="lb">raw</span><i class="dot"></i></button><button class="lamp" id="lampCut" aria-label="cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button></span></div>
+  <div class="status">
+    <span class="ver">NOW <b id="verNum">1.0.0</b></span>
+    <span class="lamps">
+      <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
+      <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
+      <button class="lamp" id="lampCut" aria-label="02:00 cutoff" hidden><span class="lb">cutoff</span><i class="dot"></i></button>
+    </span>
+  </div>
 
   <div class="screen">
 
-    <!-- NOW -->
+    <!-- NOW: one thing -->
     <section class="route on" id="r-now" aria-label="Now">
-      <div id="nowDark" class="darknote" hidden>
-        <div class="big">Dark until 06:00 ET</div>
-        The box works. Nothing else tonight.
-      </div>
+      <div id="nowDark" class="darknote" hidden></div>
       <div id="nowBody">
+        <button class="brief" id="briefLine" hidden><span class="k">Stack</span><span id="sBrief"></span></button>
         <div class="card first" id="firstCard">
           <div class="tag acc" id="firstTag">First</div>
           <h2 id="firstText">Nothing waiting. Type one thing.</h2>
-          <div class="why" id="firstWhy">Dump sends it to raw and forgets it. Hold to keep it here until Done.</div>
+          <div class="why" id="firstWhy"></div>
           <div class="row between" id="timerRow" hidden>
             <div class="timer" id="timer">25:00</div>
-            <div class="mini">
-              <button class="chipbtn" id="tPlus">+5</button>
-              <button class="chipbtn" id="tPause">pause</button>
-            </div>
+            <div class="mini"><button class="chipbtn" id="tPlus">+5</button><button class="chipbtn" id="tPause">pause</button></div>
           </div>
           <div class="act" id="firstActs"></div>
         </div>
-        <div class="card fill" style="padding:6px 16px">
-          <div class="strip"><span class="k">Raw</span><span class="v" id="sLanded">—</span><span class="age" id="sLandedAge"></span></div>
-          <div class="strip"><span class="k">Done</span><span class="v" id="sDone">—</span><span class="age">today</span></div>
+        <div class="card thin fill" id="strips">
+          <div class="strip"><span class="k">Out</span><span class="v" id="sOut">—</span><span class="age" id="sOutAge"></span></div>
+          <div class="strip"><span class="k">Done</span><span class="v" id="sDone">—</span><span class="age" id="sDoneAge"></span></div>
           <div class="strip"><span class="k">Cards</span><span class="v" id="sCards">—</span><span class="age" id="sCardsAge"></span></div>
           <div class="strip"><span class="k">Floor</span><span class="v" id="sFloor">—</span><span class="age" id="sFloorAge"></span></div>
-          <div class="strip"><span class="k">Lanes</span><span class="v"><span class="lanerow" id="laneRow"></span></span><span class="age" id="lanesCount"></span></div>
+          <div class="strip"><span class="k">Lanes</span><span class="v"><span class="lanerow" id="laneRow"></span></span><span class="age" id="sLanesAge"></span></div>
         </div>
-
-        <div class="card" style="padding:6px 16px" id="queueCard">
-          <div class="tag" style="padding:8px 0 4px">Waiting</div>
+        <div class="card thin" id="queueCard">
+          <div class="tag">Waiting</div>
           <div class="list" id="queue"></div>
         </div>
       </div>
     </section>
 
-    <!-- CARDS -->
+    <!-- CARDS: decisions the stack is waiting on -->
     <section class="route" id="r-cards" aria-label="Cards">
+      <div id="cardsDark" class="darknote" hidden></div>
       <div class="deck" id="deck"></div>
-      <div class="card" style="padding:6px 16px" id="parkedCard">
-        <div class="tag" style="padding:8px 0 4px">Parked · returns only on a new fact</div>
-        <div id="parkedList"></div>
-      </div>
-      <div class="card" style="padding:6px 16px" id="decidedCard">
-        <div class="tag" style="padding:8px 0 4px">Decided · what your taps wrote</div>
+      <div class="card thin" id="decidedCard">
+        <div class="tag">Decided · what your taps sent</div>
         <div id="decidedList"></div>
       </div>
     </section>
 
-    <!-- FLOOR -->
+    <!-- FLOOR: six vectors, a reading, never a mean -->
     <section class="route" id="r-floor" aria-label="Floor">
       <div class="row between"><span class="tag">Floor · tonight</span><span class="stamp" id="floorLast">last logged <b>never</b></span></div>
-      <div class="card" style="padding:6px 16px" id="vectors"></div>
+      <div class="card thin" id="vectors"></div>
       <div class="card">
-        <div class="chipbox"><span class="st" id="chip">·</span><span class="line" id="chipLine">Six untouched. Tap a number in each row; skip what you don't know.</span></div>
-        <div class="stamp" style="margin-top:8px">computed on this phone from what is set · the chip is never stored, only the reading is</div>
+        <div class="chipbox"><span class="st off" id="chip">·</span><span class="line" id="chipLine"></span></div>
+        <div class="stamp wrap" style="margin-top:8px">computed on this phone from what is set · the reading goes to the stack, the chip is never stored</div>
       </div>
       <div class="row">
         <button class="btn primary" id="logFloor">Log it</button>
         <button class="btn sm" id="sameFloor">Same as last</button>
       </div>
-      <div class="card" style="padding:6px 16px">
-        <div class="tag" style="padding:8px 0 4px">Recent readings</div>
+      <div class="card thin">
+        <div class="tag">Recent readings</div>
         <div id="floorHist"></div>
       </div>
     </section>
 
-    <!-- STUCK -->
+    <!-- STUCK: shrink the thing; the door; your data -->
     <section class="route" id="r-stuck" aria-label="Stuck">
       <div class="row between"><span class="tag">Stuck</span><span class="stamp" id="stuckOn">on: nothing started</span></div>
-      <div class="card ask" id="doorCard" hidden>
-        <div class="tag">Raw door</div>
-        <div class="answer muted" id="doorOut">This public repo ships neither a door URL nor a door key. Enter both once on this device; they stay in localStorage and DUMP posts with them.</div>
+      <div class="card ask">
+        <div class="tag">Break it down</div>
+        <div class="answer muted" id="splitOut">Tap ▤ on anything waiting, then write its steps here — one per line, each one small enough to start in a minute. Each becomes its own start; the big one steps aside.</div>
+        <textarea class="field" id="splitBox" placeholder="one small step per line" hidden></textarea>
+        <div class="row"><button class="btn primary" id="splitGo" hidden>Land these</button><button class="btn sm ghost" id="splitCancel" hidden>Cancel</button></div>
+      </div>
+      <div class="card ask" id="doorCard">
+        <div class="tag">The door</div>
+        <div class="answer muted" id="doorOut"></div>
+        <input class="field" id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
+        <input class="field" id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
         <div class="row" id="doorActs"></div>
-        <div id="doorCfg" style="margin-top:10px">
-          <input id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
-          <input id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
-          <div class="stamp" style="margin-top:6px">Public copy ships neither. Enter once per device — kept on this phone only. DUMP posts the key in the JSON body, never in the URL.</div>
-        </div>
+        <div class="stamp wrap" id="doorStamps"></div>
       </div>
       <div class="card ask">
-        <div class="tag">One next step</div>
-        <div class="answer muted" id="stepOut">Ask for the one physical thing to do next — twelve words or fewer. It knows what you started and how the floor read tonight.</div>
-        <div class="row">
-          <button class="btn primary" id="askStep">Next step</button>
-          <button class="btn sm" id="stepToDump" hidden>Dump it</button>
-        </div>
-      </div>
-      <div class="card ask" id="storeCard">
         <div class="tag">Your data</div>
-        <div class="answer muted" id="storeOut">Every copy of NOW keeps its own store. Export writes one file with your starts, cards, decisions, floor readings, receipts, counters and lanes; import merges that file into this copy. Nothing is uploaded — the file goes to this device.</div>
+        <div class="answer muted">This phone keeps its own copy: starts, cards, floor readings, receipts, counters, lanes, and anything still waiting to go out. Export writes it to one file on this device; import merges a file back in, newest record winning. The door key is never exported.</div>
         <div class="row" id="storeActs"></div>
         <input id="impFile" type="file" accept="application/json,.json" class="sr">
       </div>
-      <div class="card ask">
-        <div class="tag">Break it down</div>
-        <div class="answer muted" id="stagesOut">Pick a big start from the list (tap ▤ next to it), then break it into stages. Each stage becomes its own start; the big one is parked.</div>
-        <div class="stages" id="stages"></div>
-        <div class="row">
-          <button class="btn" id="askStages" disabled>Break it down</button>
-          <button class="btn sm primary" id="landStages" hidden>Land these</button>
-        </div>
-      </div>
     </section>
-
   </div>
 
   <div class="dump">
     <button class="btn primary land" id="dumpGo">DUMP</button>
     <label class="sr" for="dumpBox">Garbage or Gold?</label>
     <textarea id="dumpBox" rows="1" placeholder="Garbage or Gold?" enterkeyhint="done"></textarea>
-    <div class="held" id="heldRow" hidden><span id="heldNote"></span></div>
+    <div class="held" id="heldRow" hidden></div>
   </div>
 
   <nav class="tabbar" aria-label="Routes">
@@ -286,490 +283,970 @@ body{padding:0 16px;padding-block:0}
 
 <div class="toast" id="toast" hidden><span id="toastText"></span><button class="u" id="toastUndo">UNDO · 3</button></div>
 
-<script>
-(function(){
-"use strict";
-const $=id=>document.getElementById(id);
-const VECTORS=["family","energy","recharge","balance","harmony","control"];
-const FMT_T=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hour12:false});
-const FMT_D=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",weekday:"short",day:"2-digit",month:"short"});
-const FMT_H=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",hour12:false});
-const etHour=d=>parseInt(FMT_H.format(d||new Date()),10)%24;
-const etTime=d=>FMT_T.format(d);
-const etDay=d=>{const p=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);return p;};
-const nowIso=()=>new Date().toISOString();
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const ago=iso=>{if(!iso)return"";const s=(Date.now()-Date.parse(iso))/1e3;if(s<60)return"now";if(s<3600)return Math.floor(s/60)+" m";if(s<86400)return Math.floor(s/3600)+" h";return Math.floor(s/86400)+" d";};
-const words=s=>s.trim().split(/\s+/).filter(Boolean).length;
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+<script id="core">
+/*
+ * CORE — every rule the walker enforces, with no screen, no storage and no network.
+ * test.js runs this block alone in Node, against joeos-core's own contract vectors.
+ */
+const CORE = (function () {
+  "use strict";
 
-// ---------- state (memory first; db when it resolves) ----------
-const S={items:{},cards:{},decisions:{},floor:{},receipts:{},counters:{},route:"now",bigPick:null,stages:null};
-let db=null,sample=null,mcp=null,dbState="memory";
-/* one origin, one namespace (`now.*`), one store helper. walker.v0 / walker.held names stay as shipped. */
-function store(ns){ns=ns||"now";return{get:function(k){try{return localStorage.getItem(ns+"."+k);}catch(e){return null;}},set:function(k,v){try{if(v==null)localStorage.removeItem(ns+"."+k);else localStorage.setItem(ns+"."+k,String(v));}catch(e){}}};}
-var nowStore=store("now");
-/* Door card ops: POST op cards (phone pull) / card_put (seat) / card_answer (phone). Pull is truth. */
-var DOOR_OP_CARDS="cards", DOOR_OP_CARD_PUT="card_put", DOOR_OP_CARD_ANSWER="card_answer";
-var LAST_PULL_LS="last_pull_stamp";
-/* walker-dump-door: public repo ships neither door URL nor door key.
-   Both live in localStorage (STUCK → Raw door), entered once per device.
-   DUMP POSTs JSON {key,text,receipt_id,schema,origin_surface}; key never in the URL.
-   Cards pull POSTs {op:"cards", key, since, floor} as text/plain; key never in the URL. */
-var DOOR_URL_LS="now.door_url", DOOR_KEY_LS="now.door_key";
-function doorUrl(){try{return (localStorage.getItem(DOOR_URL_LS)||"").trim();}catch(e){return "";}}
-function setDoorUrl(v){try{localStorage.setItem(DOOR_URL_LS,(v||"").trim());}catch(e){}}
-function doorKey(){try{return (localStorage.getItem(DOOR_KEY_LS)||"").trim();}catch(e){return "";}}
-function setDoorKey(v){try{localStorage.setItem(DOOR_KEY_LS,(v||"").trim());}catch(e){}}
-function doorKeyed(){return !!(doorUrl()&&doorKey());}
-/* legacy OAuth folder id retained for mcp/connector path only */
-var FEEDS_KEY="now.feeds_folder";
-function feedsFolder(){try{return (localStorage.getItem(FEEDS_KEY)||"").trim();}catch(e){return "";}}
-function setFeedsFolder(v){try{localStorage.setItem(FEEDS_KEY,(v||"").trim());}catch(e){}}
-const COLS=["items","cards","decisions","floor","receipts","counters"];
-const col=name=>db?db.collection(name):null;
+  /* ---------- time: every rule is Eastern ---------- */
+  const TZ = "America/Toronto";
+  const FMT = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  function et(d) {
+    const p = {};
+    for (const x of FMT.formatToParts(d || new Date())) p[x.type] = x.value;
+    return { day: p.year + "-" + p.month + "-" + p.day, hour: Number(p.hour) % 24, minute: Number(p.minute), clock: (p.hour === "24" ? "00" : p.hour) + ":" + p.minute };
+  }
+  /* 02:00–05:59 ET the walker is dark: nothing leaves, nothing is asked (R-068). */
+  function isNight(d) { const h = et(d).hour; return h >= 2 && h < 6; }
+  /* The 02:00 cutoff is a lamp, not a clock — it exists only from 23:00. Minutes left, or null. */
+  function minutesToCutoff(d) {
+    const p = et(d);
+    if (p.hour >= 23) return (26 - p.hour) * 60 - p.minute;
+    if (p.hour < 2) return (2 - p.hour) * 60 - p.minute;
+    return null;
+  }
+  function shiftDay(ymd, n) { const a = ymd.split("-").map(Number); const t = new Date(Date.UTC(a[0], a[1] - 1, a[2]) + n * 86400000); return t.toISOString().slice(0, 10); }
+  function dow(ymd) { const a = ymd.split("-").map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])).getUTCDay(); }
 
-function cache(){try{localStorage.setItem("now.walker.v0",JSON.stringify({items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters}));}catch(e){}}
-function uncache(){try{const j=JSON.parse(localStorage.getItem("now.walker.v0")||"null");if(j){Object.assign(S,{items:j.items||{},cards:j.cards||{},decisions:j.decisions||{},floor:j.floor||{},receipts:j.receipts||{},counters:j.counters||{}});}}catch(e){}}
+  const words = (s) => String(s || "").trim().split(/\s+/).filter(Boolean).length;
 
-async function put(kind,id,data){S[kind][id]=Object.assign({},S[kind][id]||{},data,{id});cache();render();const c=col(kind);if(c){try{await c.doc(id).set(S[kind][id]);}catch(e){note("write failed · "+(e&&e.code||"?"));lamp("lampStore","bad","Store write failed · "+(e&&e.code||"?")+" — kept on this phone; reload when the store is back.");}}}
-async function del(kind,id){delete S[kind][id];cache();render();const c=col(kind);if(c){try{await c.doc(id).delete();}catch(e){}}}
-function subscribe(){for(const k of COLS){let first=true;col(k).onSnapshot(snap=>{const next={};snap.docs.forEach(d=>{next[d.id]=Object.assign({id:d.id},d.data());});if(first){first=false;for(const id in S[k]){if(!next[id]){next[id]=S[k][id];col(k).doc(id).set(S[k][id]).catch(()=>{});}}}S[k]=next;cache();render();},e=>note("store · "+(e.code||"error")));}}
+  /* ---------- the floor: six vectors → one state (live v5.1 matrix, joeos-core state.py) ----------
+     Energy or control at 2 or below is a tripwire on its own. An average cannot see that. */
+  const VECTORS = ["family", "energy", "recharge", "balance", "harmony", "control"];
+  function isNum(x) { return typeof x === "number" && isFinite(x); }
+  function lowv(x, t) { return isNum(x) && x <= t; }
+  function highv(x, t) { return isNum(x) && x >= t; }
+  function isTripped(c) { return !!c && (lowv(c.energy, 2) || lowv(c.control, 2)); }
+  function chipFor(v) {
+    v = v || {};
+    const n = VECTORS.map((k) => v[k]).filter(isNum).length;
+    const out = (code, name, line) => ({ st: code, name: name, line: line, red: code === "C", n: n });
+    if (!n) return out("—", "", "Six untouched. Tap a number in each row; skip what you don't know.");
+    if (lowv(v.harmony, 2) && lowv(v.control, 2)) return out("C", "Redline — stop", "Full stop. Zero planning, zero debate. Bedtime.");
+    if (highv(v.energy, 4) && lowv(v.control, 2)) return out("A", "High drive, low control", "Solo technical work only. No sensitive conversations.");
+    if (lowv(v.energy, 2) && highv(v.control, 4)) return out("B", "Low battery", "Tiny steps under 2 minutes. Rest is productive.");
+    if (isTripped(v)) return out("!", "Tripwire", "Floor protection. One tiny step or rest.");
+    if (highv(v.family, 4) && lowv(v.balance, 2)) return out("D", "Full house, thin buffer", "Single-action fixes only. Clear one loop at a time.");
+    if (highv(v.energy, 4) && highv(v.control, 4)) return out("E", "Flow", "Execution window. Guard the hyperfocus.");
+    if (!isNum(v.energy) || !isNum(v.control) || !isNum(v.harmony) || !isNum(v.family) || !isNum(v.balance)) return out("—", "Incomplete check", "Some vectors weren't logged. Log a full check when you can.");
+    return out("F", "Steady", "Normal momentum. One next action at a time.");
+  }
+  /* What the stack is told about the floor when the phone asks for cards — a band, never the numbers.
+     The stack decides from it how much to ask of you. */
+  function floorBand(reading) {
+    if (!reading) return { state: "unknown" };
+    const c = chipFor(reading.v || {});
+    let state = "ok";
+    if (c.red || c.st === "C" || c.st === "!") state = "fail";
+    else if (c.st === "B" || c.st === "D" || c.st === "A" || c.st === "—" || c.n < 6) state = "thin";
+    return { st: c.st, red: !!c.red, n: c.n, state: state, at: reading.at };
+  }
 
-// ---------- rendering ----------
-function items(){return Object.values(S.items).sort((a,b)=>(a.at||"").localeCompare(b.at||""));}
-function active(){return items().find(i=>i.state==="started")||null;}
-function landed(){return items().filter(i=>i.state==="landed");}
-function latestFloor(){return Object.values(S.floor).sort((a,b)=>(b.at||"").localeCompare(a.at||""))[0]||null;}
-function isNum(x){return typeof x==="number"&&isFinite(x);}function lowv(x,t){return isNum(x)&&x<=t;}function highv(x,t){return isNum(x)&&x>=t;}function isTripped(c){return !!c&&(lowv(c.energy,2)||lowv(c.control,2));}/* NOW-V1: the live v5.1 matrix, ported from joeos-core state.py (via state.ts). Replaces the walker's average-of-six R/L/F/H chip, which could not see a tripwire. */function chipFor(v){v=v||{};var n=VECTORS.map(function(k){return v[k];}).filter(isNum).length;function out(code,name,line){return {st:code,name:name,line:line,red:code==="C",n:n};}if(!n)return out("\u2014","","Six untouched. Tap a number in each row; skip what you don't know.");if(lowv(v.harmony,2)&&lowv(v.control,2))return out("C","Redline — stop","Full stop. Zero planning, zero debate. Bedtime.");if(highv(v.energy,4)&&lowv(v.control,2))return out("A","High drive, low control","Solo technical work only. No sensitive conversations.");if(lowv(v.energy,2)&&highv(v.control,4))return out("B","Low battery","Tiny steps under 2 minutes. Rest is productive.");if(isTripped(v))return out("!","Tripwire","Floor protection. One tiny step or rest.");if(highv(v.family,4)&&lowv(v.balance,2))return out("D","Full house, thin buffer","Single-action fixes only. Clear one loop at a time.");if(highv(v.energy,4)&&highv(v.control,4))return out("E","Flow","Execution window. Guard the hyperfocus.");if(!isNum(v.energy)||!isNum(v.control)||!isNum(v.harmony)||!isNum(v.family)||!isNum(v.balance))return out("\u2014","Incomplete check","Some vectors weren't logged. Log a full check when you can.");return out("F","Steady","Normal momentum. One next action at a time.");}
-function isDark(){const h=etHour();if(h>=2&&h<6)return"night";const f=latestFloor();if(f&&f.at&&(Date.now()-Date.parse(f.at))<12*3600e3&&chipFor(f.v||{}).red)return"red";return null;}
+  /* ---------- FIRST: which one thing (joeos-core ops.py, same verbs, same weights) ----------
+     Shorter wins; a leading physical verb wins big; older breaks ties; a question loses. */
+  const PHYSICAL_VERBS = ["call", "text", "email", "send", "book", "confirm", "pick up", "pickup", "drop", "buy", "pay", "print", "sign", "fill", "pack", "wash", "fold", "cook", "prep", "put", "move", "clean", "open", "write", "read", "check", "fix", "reply", "walk", "drive", "order", "cancel", "schedule"];
+  const Y2030 = Date.UTC(2030, 0, 1);
+  function leadVerb(t) { for (let r = 0; r < PHYSICAL_VERBS.length; r++) { const v = PHYSICAL_VERBS[r]; if (t === v || t.indexOf(v + " ") === 0) return r; } return -1; }
+  function scoreItem(it, code) {
+    const t = (it.text || "").toLowerCase().trim();
+    const n = words(t);
+    if (!n) return -1e9;
+    let sc = Math.max(0, (code === "B" ? 8 : 14) - n);
+    const r = leadVerb(t);
+    if (r >= 0) sc += 10 - r * 0.1;
+    const at = it.at ? Date.parse(it.at) : NaN;
+    if (isFinite(at)) sc += 0.0001 * Math.max(0, Math.floor((Y2030 - at) / 86400000));
+    if (t.indexOf("?") >= 0) sc -= 4;
+    return sc;
+  }
+  function pickFirst(pool, code) {
+    if (!pool.length) return null;
+    let best = pool[0], bs = scoreItem(best, code);
+    for (let i = 1; i < pool.length; i++) { const sc = scoreItem(pool[i], code); if (sc > bs) { best = pool[i]; bs = sc; } }
+    const t = (best.text || "").toLowerCase().trim();
+    const r = leadVerb(t);
+    const why = r >= 0 ? "starts with “" + PHYSICAL_VERBS[r] + "” — hands, not head"
+      : words(t) <= (code === "B" ? 8 : 14) ? (code === "B" ? "low battery — the smallest thing waiting" : "short enough to just start")
+      : "oldest thing waiting";
+    return { item: best, why: why };
+  }
 
-/* NOW-V1: FIRST chooser — port of joeos-core ops.py (score + next_physical_action), the same verb list, weights and clip the Python brain uses. The walker used to take whatever was oldest; this picks the one thing most likely to actually get done. */
-var PHYSICAL_VERBS=["call","text","email","send","book","confirm","pick up","pickup","drop","buy","pay","print","sign","fill","pack","wash","fold","cook","prep","put","move","clean","open","write","read","check","fix","reply","walk","drive","order","cancel","schedule"];
-var Y2030=Date.UTC(2030,0,1);
-function scoreItem(it,code){var t=(it.text||"").toLowerCase().trim();var n=words(t);if(!n)return -1e9;var sc=0,cap=(code==="B")?8:14;sc+=Math.max(0,cap-n);for(var r=0;r<PHYSICAL_VERBS.length;r++){var v=PHYSICAL_VERBS[r];if(t===v||t.indexOf(v+" ")===0){sc+=10-r*0.1;break;}}var at=it.at?Date.parse(it.at):NaN;if(isFinite(at))sc+=0.0001*Math.max(0,Math.floor((Y2030-at)/86400000));if(t.indexOf("?")>=0)sc-=4;return sc;}
-function pickFirst(){var pool=landed();if(!pool.length)return null;var f=latestFloor();var code=f?chipFor(f.v||{}).st:null;var best=pool[0],bs=scoreItem(best,code);for(var i=1;i<pool.length;i++){var sc=scoreItem(pool[i],code);if(sc>bs){best=pool[i];bs=sc;}}var cap=(code==="B")?8:14;var why=words(best.text)<=cap?"shortest verb-first thing waiting":"oldest thing waiting";return {item:best,why:why,code:code};}
-/* NOW-V1: the 02:00 cutoff as a lamp, never a clock (Joe: a lamp that is green all evening is chrome). */
-function minutesToCutoff(){var h=etHour(),m=parseInt(new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",minute:"2-digit"}).format(new Date()),10)||0;if(h>=23)return (24-h+2)*60-m;if(h<2)return (2-h)*60-m;return null;}
-function syncCutoff(){var el=$("lampCut");if(!el)return;var left=minutesToCutoff();if(left==null){el.hidden=true;return;}el.hidden=false;var state=left<=30?"bad":left<=90?"warn":"ok";lamp("lampCut",state,"02:00 cutoff in "+Math.floor(left/60)+"h "+String(left%60).padStart(2,"0")+"m. The rule is the rule.");}
-setInterval(syncCutoff,60000);
-let timerT=null,timerEnd=null,timerLeft=null,paused=false;
-function fmtT(ms){const s=Math.max(0,Math.round(ms/1e3));const m=Math.floor(s/60),r=s%60;return (m<10?"0":"")+m+":"+(r<10?"0":"")+r;}
-function tickTimer(){const a=active();const el=$("timer");if(!a){$("timerRow").hidden=true;return;}$("timerRow").hidden=false;if(paused){el.textContent=fmtT(timerLeft);return;}const left=(a.timer_end?Date.parse(a.timer_end):0)-Date.now();el.textContent=left<=0?"-"+fmtT(-left):fmtT(left);el.classList.toggle("over",left<=0);}
-setInterval(tickTimer,500);
-let lastDark=null;setInterval(()=>{const d=isDark();if(d!==lastDark){lastDark=d;render();}},30000);
-
-function render(){
-  const dark=isDark();document.getElementById("phone").classList.toggle("dark",!!dark);
-  $("nowDark").hidden=!dark;$("nowBody").hidden=!!dark;
-  if(dark==="red"){$("nowDark").innerHTML='<div class="big">Red floor</div>The box works. Log the floor again when it changes.';}
-  else if(dark==="night"){$("nowDark").innerHTML='<div class="big">Dark until 06:00 ET</div>The box works. Nothing else tonight.';}
-  // first card
-  const a=active(),q=landed();
-  const acts=$("firstActs");acts.innerHTML="";
-  if(a){$("firstTag").textContent="Started · "+ago(a.started_at)+" ago";$("firstText").textContent=a.text;$("firstText").className=a.text.length>64?"long":"";$("firstWhy").textContent="Do only this. Done writes the time; Not now puts it back.";
-    acts.append(btn("Done","primary",()=>finish(a)),btn("Not now","",()=>put("items",a.id,{state:"landed",timer_end:null,started_at:null})));}
-  else if(q.length){const p=pickFirst();const o=p?p.item:q[0];$("firstTag").textContent="Start this?";$("firstText").textContent=o.text;$("firstText").className=o.text.length>64?"long":"";$("firstWhy").textContent=(words(o.text)>12?"That's "+words(o.text)+" words — break it down under STUCK, or start it as is.":(p?p.why:"oldest waiting")+" · "+ago(o.at)+" old.");
-    acts.append(btn("Start · 25m","primary",()=>start(o)),btn("Not today","",()=>put("items",o.id,{state:"parked"})));}
-  else{$("firstTag").textContent="First";$("firstText").textContent="Nothing waiting. Type one thing.";$("firstText").className="";$("firstWhy").textContent="Dump sends it to raw and forgets it. Hold to keep it here until Done.";}
-  tickTimer();
-  // strips
-  const today=etDay(new Date());
-  const rc=Object.values(S.receipts).filter(r=>r.at&&etDay(new Date(r.at))===today);const held=heldQ().length;
-  $("sLanded").textContent=(rc.length?rc.length+" to raw today":"none to raw today")+(held?" · "+held+" queued":"");$("sLandedAge").textContent=rc.length?ago(rc.sort((x,y)=>(y.at||"").localeCompare(x.at||""))[0].at):"";
-  const dn=(S.counters[today]||{}).done||0;$("sDone").textContent=dn?dn+" done":"nothing yet";$("sDone").parentNode.querySelector(".age").textContent=dn?"today":"";
-  const open=openCards();$("sCards").textContent=open.length?open.length+" waiting":"none waiting";$("sCardsAge").textContent=open.length?"oldest "+ago(open.sort((x,y)=>(x.at||"").localeCompare(y.at||""))[0].at):"";
-  const f=latestFloor();if(f){const c=chipFor(f.v||{});$("sFloor").textContent=c.st+(c.name?" · "+c.name:"");$("sFloorAge").textContent=c.n+"/6 · "+etTime(new Date(f.at))+" ET · "+ago(f.at);}else{$("sFloor").textContent="never logged";$("sFloorAge").textContent="";}
-  // queue
-  const ql=$("queue");ql.innerHTML="";q.slice(0,8).forEach(i=>{const d=document.createElement("div");d.className="item";d.innerHTML='<div class="t">'+esc(i.text)+'</div>';const mini=document.createElement("div");mini.className="mini";const big=document.createElement("button");big.className="chipbtn"+(S.bigPick===i.id?" acc":"");big.textContent="▤";big.title="Break it down";big.onclick=()=>{S.bigPick=i.id;go("stuck");};const st=document.createElement("button");st.className="chipbtn acc";st.textContent="▶";st.title="Start";st.onclick=()=>start(i);mini.append(big,st);d.append(mini);const s=document.createElement("div");s.className="s";s.innerHTML="landed<br>"+esc(etTime(new Date(i.at)))+" ET";d.append(s);ql.append(d);});
-  if(q.length>8){const m=document.createElement("div");m.className="item";m.innerHTML='<div class="t muted">…and '+(q.length-8)+' more, oldest first</div>';ql.append(m);}
-  $("queueCard").hidden=!q.length;
-  renderLanes();syncCutoff();renderCards();renderFloor();renderStuck();renderDoor();renderStore();
-}
-/* NOW-V1: L's four lanes, ported from lanes.ts. On this phone only; tokenised "L", never a real name (walls §6). Skip-days are stepped over, never counted against a streak. */
-var LANES=[{key:"school",label:"School",skip:[0,6]},{key:"lunches",label:"Lunch",skip:[5,6]},{key:"laundry",label:"Laundry",skip:[]},{key:"cooking",label:"Cook",skip:[]}];
-var LANE_KEY="now.lanes.v1";
-function readLanes(){try{var j=JSON.parse(localStorage.getItem(LANE_KEY)||"{}");return (j&&typeof j==="object")?j:{};}catch(e){return {};}}
-function writeLanes(l){try{localStorage.setItem(LANE_KEY,JSON.stringify(l));}catch(e){}}
-function shiftDay(ymd,d){var a=ymd.split("-").map(Number);var t=Date.UTC(a[0],a[1]-1,a[2])+d*86400000;var n=new Date(t);return n.getUTCFullYear()+"-"+String(n.getUTCMonth()+1).padStart(2,"0")+"-"+String(n.getUTCDate()).padStart(2,"0");}
-function dow(ymd){var a=ymd.split("-").map(Number);return new Date(Date.UTC(a[0],a[1]-1,a[2])).getUTCDay();}
-function laneStreak(log,key,today){var lane=LANES.filter(function(l){return l.key===key;})[0];var skip=(lane?lane.skip:[]);var day=today,n=0,first=true;for(var g=0;g<400;g++){if(skip.indexOf(dow(day))>=0){day=shiftDay(day,-1);continue;}var on=!!(log[day]&&log[day][key]);if(on)n++;else if(!first)break;first=false;day=shiftDay(day,-1);}return n;}
-function toggleLane(key){var today=etDay(new Date());var log=readLanes();var d=Object.assign({},log[today]||{});if(d[key])delete d[key];else d[key]=true;if(Object.keys(d).length)log[today]=d;else delete log[today];writeLanes(log);renderLanes();}
-function renderLanes(){var row=$("laneRow");if(!row)return;var today=etDay(new Date());var log=readLanes();var td=log[today]||{};var wd=dow(today);row.innerHTML="";LANES.forEach(function(l){var b=document.createElement("button");var skipped=l.skip.indexOf(wd)>=0;var on=!!td[l.key];var st=laneStreak(log,l.key,today);b.className="lane"+(on?" on":"")+(skipped&&!on?" skip":"");b.type="button";b.innerHTML='<span class="l">'+esc(l.label)+'</span>'+'<span class="s">'+(skipped&&!on?"off":(st>0?st+"d":"—"))+'</span>';b.onclick=function(){toggleLane(l.key);};row.append(b);});$("lanesCount").textContent=Object.keys(td).length+" of 4 today";}
-function btn(label,cls,fn){const b=document.createElement("button");b.className="btn "+cls;b.textContent=label;b.onclick=fn;return b;}
-async function start(o){const cur=active();if(cur)await put("items",cur.id,{state:"landed",timer_end:null,started_at:null});paused=false;await put("items",o.id,{state:"started",started_at:nowIso(),timer_end:new Date(Date.now()+25*60e3).toISOString()});go("now");}
-async function finish(a){const day=etDay(new Date());const c=S.counters[day]||{day,done:0};const keep=Object.assign({},a);await del("items",a.id);await put("counters",day,{day,done:(c.done||0)+1});toast("Done. "+a.text.slice(0,40),async()=>{await put("items",keep.id,Object.assign({},keep,{state:"started",timer_end:new Date(Date.now()+5*60e3).toISOString()}));await put("counters",day,{day,done:Math.max(0,(S.counters[day]||{}).done-1||0)});});}
-$("tPlus").onclick=()=>{const a=active();if(!a)return;const base=paused?Date.now()+timerLeft:Math.max(Date.now(),Date.parse(a.timer_end||0));paused=false;put("items",a.id,{timer_end:new Date(base+5*60e3).toISOString()});};
-$("tPause").onclick=()=>{const a=active();if(!a)return;if(!paused){timerLeft=Date.parse(a.timer_end||0)-Date.now();paused=true;$("tPause").textContent="resume";}else{paused=false;$("tPause").textContent="pause";put("items",a.id,{timer_end:new Date(Date.now()+timerLeft).toISOString()});}};
-
-// cards
-function isDoorCard(c){return !!(c&&c.door);}
-function doorCardExpired(c){if(!c||!c.at)return false;var ms=(Number(c.ttl_h)||24)*3600000;var t=Date.parse(c.at);return isFinite(t)&&Date.now()>t+ms;}
-function isOpenDoorCard(c){return isDoorCard(c)&&c.state!=="answered"&&!c.answered&&!c.answered_at&&!c.later;}
-function openCards(){
-  const local=Object.values(S.cards).filter(c=>c.state==="open");
-  const door=Object.values(S.decisions).filter(isOpenDoorCard);
-  return local.concat(door);
-}
-function floorStateForDoor(){
-  var f=latestFloor();
-  if(!f) return {state:"unknown"};
-  var c=chipFor(f.v||{});
-  var state="ok";
-  if(c.red||c.st==="C"||c.st==="!") state="fail";
-  else if(c.st==="B"||c.st==="D"||c.st==="A"||c.st==="—"||c.st==="\u2014"||c.n<6) state="thin";
-  return {st:c.st,red:!!c.red,n:c.n,state:state,at:f.at};
-}
-function renderCards(){
-  const doorOpen=Object.values(S.decisions).filter(isOpenDoorCard).sort((x,y)=>(x.at||"").localeCompare(y.at||""));
-  const localOpen=Object.values(S.cards).filter(c=>c.state==="open").sort((x,y)=>(x.at||"").localeCompare(y.at||""));
-  const open=doorOpen.concat(localOpen);
-  const deck=$("deck");deck.innerHTML="";
-  if(open.length){
-    const c=open[0];
-    const door=isDoorCard(c);
-    const expired=door&&doorCardExpired(c);
-    const q=door?(c.text||""):(c.q||"");
-    const rec=door?(c.recommend||c.rec||""):(c.rec||"");
-    const opts=(c.options&&c.options.length?c.options.slice(0,4):["Yes","No"]);
-    const tag=expired?"Expired":(door?(c.kind||"Card"):"Card");
-    deck.innerHTML=(open.length>2?'<div class="c c3"></div>':'')+(open.length>1?'<div class="c c2"></div>':'')+'<div class="card first c c1"><div class="hd"><span class="tag acc">'+esc(tag)+' 1 of '+open.length+'</span><span class="stamp">waited <b>'+esc(ago(c.at))+'</b></span></div><h3>'+esc(q)+'</h3><div class="rec">'+(rec?'Recommendation: <b>'+esc(rec)+'</b>':'')+'</div><div class="because">'+(c.because?'needs you because: <b>'+esc(c.because)+'</b> · ':'')+'card: '+esc(c.id)+'</div><div class="ans" id="ans"></div></div>';
-    const ans=deck.querySelector("#ans");
-    if(expired){ans.append(btn("Expired","ghost sm",function(){}));}
-    else{
-      opts.forEach(function(o){ans.append(btn(o,(rec&&o===rec)?"primary":"",function(){if(door)answerDoorCard(c,o);else decide(c,o);}));});
-      if(door) ans.append(btn("later","ghost sm",function(){laterDoorCard(c);}));
-      else ans.append(btn("Park","ghost sm",()=>put("cards",c.id,{state:"parked"})));
+  /* ---------- lanes: L's four; skip-days are stepped over, never held against a streak ---------- */
+  const LANES = [
+    { key: "school", label: "School", skip: [0, 6] },
+    { key: "lunches", label: "Lunch", skip: [5, 6] },
+    { key: "laundry", label: "Laundry", skip: [] },
+    { key: "cooking", label: "Cook", skip: [] },
+  ];
+  function laneStreak(log, key, today) {
+    const lane = LANES.find((l) => l.key === key);
+    const skip = lane ? lane.skip : [];
+    let day = today, n = 0, first = true;
+    for (let g = 0; g < 400; g++) {
+      if (skip.indexOf(dow(day)) >= 0) { day = shiftDay(day, -1); continue; }
+      const on = !!(log[day] && log[day][key]);
+      if (on) n++; else if (!first) break;
+      first = false;
+      day = shiftDay(day, -1);
     }
+    return n;
   }
-  else deck.innerHTML='<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">A seat files a card; this phone pulls it. A tap answers through the door.</div></div>';
-  const parked=Object.values(S.cards).filter(c=>c.state==="parked");$("parkedCard").hidden=!parked.length;$("parkedList").innerHTML=parked.map(c=>'<div class="park"><span>'+esc(c.q)+'</span><span class="n">'+esc(ago(c.at))+'</span></div>').join("");
-  const dec=Object.values(S.decisions).filter(function(d){return d&&(d.decision||d.choice)&&d.state!=="open";}).sort((x,y)=>(y.at||y.answered_at||"").localeCompare(x.at||x.answered_at||"")).slice(0,6);
-  $("decidedCard").hidden=!dec.length;$("decidedList").innerHTML=dec.map(d=>'<div class="park"><span>'+esc((S.cards[d.card]||{}).q||d.text||d.card||d.id)+' → <b>'+esc(d.decision||d.choice||"")+'</b></span><span class="n">'+esc(etTime(new Date(d.at||d.answered_at)))+'</span></div>').join("");
-}
-function laterDoorCard(c){if(!c||!c.id)return;S.decisions[c.id]=Object.assign({},S.decisions[c.id]||c,{later:true,id:c.id,door:true});cache();render();}
-function clearDoorLater(){var id;for(id in S.decisions){if(S.decisions[id]&&S.decisions[id].later)S.decisions[id].later=false;}cache();}
-async function doorPost(payload){
-  const url=doorUrl(),key=doorKey();if(!url||!key)throw {code:"no_door"};
-  const body=JSON.stringify(Object.assign({key:key},payload));
-  let res,raw;
-  try{res=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});raw=await res.text();}
-  catch(e){throw {code:"network"};}
-  if(!raw)throw {code:"unauthorized"};
-  let j;try{j=JSON.parse(raw);}catch(e){throw {code:"bad_response"};}
-  if(!j||!j.ok)throw {code:"door_"+(j&&j.code||j.error||res.status||"?")};
-  return j;
-}
-async function flushPendingAnswers(){
-  var id,pending=[];
-  for(id in S.decisions){var d=S.decisions[id];if(d&&d.door&&d.pending_answer)pending.push(d);}
-  for(var i=0;i<pending.length;i++){
-    var c=pending[i];
-    try{
-      await doorPost({op:DOOR_OP_CARD_ANSWER,id:c.id,choice:c.pending_answer.choice,at:c.pending_answer.at||nowIso()});
-      S.decisions[c.id]=Object.assign({},S.decisions[c.id],{state:"answered",answered:true,choice:c.pending_answer.choice,answered_at:c.pending_answer.at,pending_answer:null,door:true});
-    }catch(e){}
+
+  /* ---------- the door: what goes over the wire (DOOR.md) ----------
+     Every outbound thing is an envelope in the outbox: {id, op, at, body}. The id is stable,
+     so a retry is never a duplicate — the door de-duplicates on it. The key rides in the JSON
+     body, never in a URL. */
+  const DUMP_SCHEMA = "lab.intake.raw/v1";
+  const ORIGIN = "walker";
+  const DUMP_MAX_BYTES = 30000;                 // the door refuses a body over 32 KB, silently
+  /* The live door (walker-door @3) takes these. It treats any op it does not know as a dump,
+     so nothing else is ever sent until the door lists it in `ops` on a pull. */
+  const LIVE_OPS = ["dump", "card_answer"];
+  const canSend = (op, advertised) => LIVE_OPS.indexOf(op) >= 0 || (Array.isArray(advertised) && advertised.indexOf(op) >= 0);
+  function wire(env, key, build) {
+    const b = env.body || {};
+    if (env.op === "dump") return { key: key, text: String(b.text || ""), receipt_id: env.id, schema: DUMP_SCHEMA, origin_surface: ORIGIN, surface_version: build };
+    if (env.op === "card_answer") return { op: "card_answer", key: key, id: b.card_id, choice: b.choice, at: env.at };
+    return Object.assign({ op: env.op, key: key, event_id: env.id, at: env.at, origin_surface: ORIGIN }, b);
   }
-  cache();
-}
-async function answerDoorCard(c,o){
-  const live=S.decisions[c.id];if(!live||!isOpenDoorCard(live)||doorCardExpired(live))return;
-  const at=nowIso();
-  S.decisions[c.id]=Object.assign({},live,{state:"answered",answered:true,choice:o,answered_at:at,pending_answer:null,door:true,id:c.id});
-  cache();render();
-  try{await doorPost({op:DOOR_OP_CARD_ANSWER,id:c.id,choice:o,at:at});toast("Wrote: "+o);}
-  catch(e){
-    S.decisions[c.id].pending_answer={choice:o,at:at};
-    S.decisions[c.id].state="answered";
-    cache();
-    toast("Queued: "+o+" — door unreachable");
+  /* The pull always asks from "0": the whole open set, every time. The door compares
+     `card.at > since` as strings, so a cursor loses any card that was held for a thin floor
+     (door defect D1) or stamped by a seat whose clock was behind (D2). Fifty cards at most;
+     re-sending them is cheap, losing one is not. */
+  function pullBody(key, reading) {
+    return { op: "cards", key: key, since: "0", floor: JSON.stringify(floorBand(reading)) };
   }
-}
-async function pullCards(){
-  if(!doorKeyed())return;
-  await flushPendingAnswers();
-  const since=nowStore.get(LAST_PULL_LS)||"0";
-  const floor=floorStateForDoor();
-  let j;
-  try{j=await doorPost({op:DOOR_OP_CARDS,since:String(since),floor:JSON.stringify(floor)});}
-  catch(e){return;}
-  if(!j||!j.ok)return;
-  const cards=j.cards||[];
-  for(var i=0;i<cards.length;i++){
-    var c=cards[i];if(!c||!c.id)continue;
-    var prev=S.decisions[c.id]||{};
-    S.decisions[c.id]=Object.assign({},prev,c,{door:true,id:c.id,state:prev.state==="answered"?"answered":"open"});
-    if(prev.pending_answer) S.decisions[c.id].pending_answer=prev.pending_answer;
-    if(prev.later) S.decisions[c.id].later=prev.later;
-    if(prev.state==="answered"){S.decisions[c.id].state="answered";S.decisions[c.id].answered=true;}
+  /* What a door error means for the envelope that got it.
+     stop  — the door or the network is the problem; stop this round, keep everything.
+     final — this envelope will never be taken as it is; retrying cannot help.
+     refused — the door does not know this op.
+     retry — keep it, try it next round. */
+  const FINAL = ["expired", "not_found", "choice_invalid", "choice_required", "id_required", "schema_or_origin", "receipt_id_required", "receipt_id_invalid", "surface_version_invalid", "payload_too_large"];
+  const STOP = ["network", "offline", "unauthorized", "no_door", "bad_response", "rate_limited", "server", "write_failed"];
+  function classify(code) {
+    code = String(code || "");
+    if (STOP.indexOf(code) >= 0 || /^http_5/.test(code)) return "stop";
+    if (FINAL.indexOf(code) >= 0) return "final";
+    if (/unknown_op|unsupported|bad_op|not_implemented/i.test(code)) return "refused";
+    return "retry";
   }
-  if(j.stamp) nowStore.set(LAST_PULL_LS, j.stamp);
-  cache();render();
-}
-async function decide(c,o){const live=S.cards[c.id];if(!live||live.state!=="open")return;const id=nowIso().replace(/[-:.]/g,"").slice(0,18)+"_"+c.id;S.cards[c.id].state="answering";await put("decisions",id,{card:c.id,decision:o,at:nowIso(),vessel:"joe",surface:"walker",origin:"joe-word",joe_word:o});await put("cards",c.id,{state:"answered",answered:o});toast("Wrote: "+o,()=>{put("cards",c.id,{state:"open",answered:null});delete S.decisions[id];cache();render();const cc=col("decisions");if(cc)cc.doc(id).delete().catch(()=>{});});}
+  /* Door URLs are https (a local test door is the one exception); the key never rides in one. */
+  function doorUrlProblem(u) {
+    let x;
+    try { x = new URL(u); } catch (e) { return "not a URL"; }
+    const local = x.hostname === "localhost" || x.hostname === "127.0.0.1";
+    if (x.protocol !== "https:" && !(local && x.protocol === "http:")) return "not https";
+    if (/(^|&)key=/i.test(x.search.slice(1))) return "has a key in it — the key goes in the box below, never in the URL";
+    return null;
+  }
 
-// floor
-const draft={};
-function renderFloor(){const v=$("vectors");if(!v.dataset.built){v.innerHTML=VECTORS.map(k=>'<div class="vec"><span class="nm">'+k+'</span><div class="seg" data-k="'+k+'">'+[1,2,3,4,5].map(n=>'<span tabindex="0" data-n="'+n+'">'+n+'</span>').join("")+'</div></div>').join("")+'<div class="absent" style="padding:8px 0 6px" id="absentNote"></div>';v.dataset.built="1";v.querySelectorAll(".seg span").forEach(s=>{const f=()=>{const k=s.parentNode.dataset.k,n=+s.dataset.n;draft[k]=draft[k]===n?null:n;renderFloor();};s.onclick=f;s.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();f();}};});}
-  v.querySelectorAll(".seg").forEach(seg=>{const k=seg.dataset.k;seg.querySelectorAll("span").forEach(s=>{s.classList.toggle("on",draft[k]===+s.dataset.n);s.classList.toggle("set",typeof draft[k]==="number");});});
-  const absent=VECTORS.filter(k=>typeof draft[k]!=="number");$("absentNote").textContent=absent.length?absent.join(", ")+" untouched — logs as ABSENT, never 0":"all six set";
-  const c=chipFor(draft);const chipEl=$("chip");chipEl.textContent=c.st;chipEl.className="st "+(c.st==="C"||c.st==="!"?"bad":(c.st==="A"||c.st==="B"||c.st==="D")?"warn":(c.st==="E"||c.st==="F")?"":"off");$("chipLine").textContent=(c.name?c.name+". ":"")+c.line;
-  const f=latestFloor();$("floorLast").innerHTML="last logged <b>"+(f?esc(etTime(new Date(f.at)))+" ET · "+esc(ago(f.at)):"never")+"</b>";$("sameFloor").disabled=!f;
-  const hist=Object.values(S.floor).sort((x,y)=>(y.at||"").localeCompare(x.at||"")).slice(0,5);$("floorHist").innerHTML=hist.length?hist.map(r=>'<div class="park"><span class="n">'+VECTORS.map(k=>typeof r.v[k]==="number"?r.v[k]:"·").join(" ")+'</span><span class="n">'+esc(FMT_D.format(new Date(r.at)))+' '+esc(etTime(new Date(r.at)))+'</span></div>').join(""):'<div class="park"><span class="muted">none yet</span></div>';}
-$("logFloor").onclick=async()=>{const v={};VECTORS.forEach(k=>v[k]=typeof draft[k]==="number"?draft[k]:null);if(!Object.values(v).some(x=>typeof x==="number")){note("nothing set");return;}const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("floor",id,{at:nowIso(),v});VECTORS.forEach(k=>delete draft[k]);toast("Logged the floor.",()=>{delete S.floor[id];cache();render();const c=col("floor");if(c)c.doc(id).delete().catch(()=>{});});renderFloor();};
-$("sameFloor").onclick=()=>{const f=latestFloor();if(!f)return;VECTORS.forEach(k=>draft[k]=typeof f.v[k]==="number"?f.v[k]:null);renderFloor();};
+  /* ---------- the store on this phone ---------- */
+  function emptyStore() {
+    return { v: 1, starts: {}, gone: {}, cards: {}, floor: {}, receipts: {}, counters: {}, outbox: [], brief: null,
+      sync: { stamp: "0", pulled_at: null, pushed_at: null, err_in: null, err_out: null, ops: [], door: null } };
+  }
+  function normalize(s) {
+    const e = emptyStore();
+    if (!s || typeof s !== "object") return e;
+    for (const k of Object.keys(e)) if (s[k] != null && typeof s[k] === typeof e[k] && Array.isArray(s[k]) === Array.isArray(e[k])) e[k] = s[k];
+    e.sync = Object.assign(emptyStore().sync, s.sync || {});
+    e.brief = s.brief && typeof s.brief === "object" ? s.brief : null;
+    return e;
+  }
+  /* Carry a 0.9.x phone across: its store (now.walker.v0), its held dumps (now.walker.held)
+     and its pull stamp. Queued dumps and unsent card answers become outbox envelopes with
+     the same ids, so the door sees them once. */
+  function migrate(v0, held, stamp) {
+    const s = emptyStore();
+    v0 = v0 && typeof v0 === "object" ? v0 : {};
+    const items = v0.items || {};
+    for (const id in items) {
+      const it = items[id];
+      if (!it || !it.text) continue;
+      const state = it.state === "started" ? "started" : it.state === "parked" ? (it.broken_down ? "split" : "parked") : "waiting";
+      s.starts[id] = { id: id, text: String(it.text), at: it.at || null, state: state, started_at: it.started_at || null, timer_end: it.timer_end || null, parent: it.parent || null, from: "phone" };
+    }
+    const decisions = v0.decisions || {};
+    for (const id in decisions) {
+      const d = decisions[id];
+      if (!d || !d.door) continue;
+      const card = { id: id, text: d.text || "", recommend: d.recommend || d.rec || "", options: Array.isArray(d.options) ? d.options : null, because: d.because || "", kind: d.kind || "", at: d.at || null, ttl_h: d.ttl_h == null ? null : d.ttl_h, answered: null, later: false };
+      if (d.pending_answer) {
+        card.answered = { choice: d.pending_answer.choice, at: d.pending_answer.at || null, sent: false };
+        s.outbox.push({ id: "ans_" + id, op: "card_answer", at: d.pending_answer.at || new Date().toISOString(), body: { card_id: id, choice: d.pending_answer.choice }, tries: 0 });
+      } else if (d.state === "answered" || d.answered || d.answered_at) {
+        card.answered = { choice: d.choice || "", at: d.answered_at || null, sent: true };
+      }
+      s.cards[id] = card;
+    }
+    for (const k of ["floor", "receipts", "counters"]) if (v0[k] && typeof v0[k] === "object") s[k] = Object.assign({}, v0[k]);
+    for (const h of Array.isArray(held) ? held : []) {
+      if (!h || !h.text) continue;
+      // The door takes a UUID or 8–64 of [A-Za-z0-9_-]; an id it refuses would strand the dump.
+      const id = h.receipt_id || "held_" + (Date.parse(h.at) || Date.now()).toString(36) + "_" + String(h.k || Math.random().toString(36).slice(2, 8)).replace(/[^A-Za-z0-9_-]/g, "");
+      if (s.outbox.some((e) => e.id === id)) continue;
+      s.outbox.push({ id: id, op: "dump", at: h.at || new Date().toISOString(), body: { text: String(h.text) }, tries: 0 });
+    }
+    if (stamp) s.sync.stamp = String(stamp);
+    return s;
+  }
+  /* Fold one pull into the store. What you did on this phone (answered, later, dismissed)
+     survives the stack re-sending a card; what you finished is never re-filed.
+     A pull from "0" is the whole open set — unless the floor was not ok, when the door holds
+     cards back. Only a whole set may retire a card this phone still shows: one the door no
+     longer has was answered somewhere else, or purged. */
+  function mergePull(s, j, nowIso, band) {
+    const cards = Array.isArray(j.cards) ? j.cards : [];
+    const seen = {};
+    for (const c of cards) {
+      if (!c || !c.id) continue;
+      const id = String(c.id);
+      seen[id] = true;
+      const prev = s.cards[id] || {};
+      s.cards[id] = Object.assign({}, prev, c, { id: id, answered: prev.answered || null, later: !!prev.later, dismissed: !!prev.dismissed, seen_at: prev.seen_at || nowIso });
+    }
+    const whole = !band || band.state === "ok" || band.state === "unknown";
+    if (whole) for (const id in s.cards) if (!seen[id] && !s.cards[id].answered) delete s.cards[id];
+    if (Array.isArray(j.ops)) s.sync.ops = j.ops.map(String);
+    if (j.door != null) s.sync.door = String(j.door);
+    if (Array.isArray(j.starts)) for (const x of j.starts) {
+      if (!x || !x.id || !x.text) continue;
+      const id = String(x.id);
+      if (s.starts[id] || s.gone[id]) continue;
+      s.starts[id] = { id: id, text: String(x.text), at: x.at || nowIso, state: "waiting", from: "stack", why: x.why || x.because || "" };
+    }
+    if ("brief" in j) s.brief = j.brief ? { text: String(typeof j.brief === "object" ? j.brief.text || "" : j.brief), at: nowIso } : null;
+    if (j.stamp != null) s.sync.stamp = String(j.stamp);
+    s.sync.pulled_at = nowIso;
+    s.sync.err_in = null;
+    return s;
+  }
+  function cardExpired(c, nowMs) {
+    if (!c || !c.at) return false;
+    const t = Date.parse(c.at);
+    return isFinite(t) && nowMs > t + (Number(c.ttl_h) || 24) * 3600000;
+  }
+  function openCards(s, nowMs) {
+    return Object.values(s.cards)
+      .filter((c) => !c.answered && !c.later && !c.dismissed)
+      .sort((a, b) => (cardExpired(a, nowMs) - cardExpired(b, nowMs)) || String(a.at || "").localeCompare(String(b.at || "")));
+  }
 
-// stuck
-function renderStuck(){const a=active();const pick=S.bigPick?S.items[S.bigPick]:null;$("stuckOn").textContent="on: "+(a?a.text.slice(0,32):"nothing started");$("askStep").disabled=!sample;$("askStages").disabled=!sample||!pick;
-  if(!sample){$("stepOut").textContent="Asking needs the page opened from claude.ai (it asks Claude directly, and asks your permission first).";$("stepOut").classList.add("muted");}
-  if(pick){$("stagesOut").textContent="Breaking down: "+pick.text;$("stagesOut").classList.remove("muted");}}
-let stepCtl=null;
-$("askStep").onclick=async()=>{if(!sample)return;const a=active()||landed()[0];const f=latestFloor();if(stepCtl)stepCtl.abort();stepCtl=new AbortController();const out=$("stepOut");out.classList.remove("muted");out.textContent="Thinking…";$("stepToDump").hidden=true;
-  const prompt="You are the STUCK route of a one-person daily walker app. Reply with exactly ONE physical next step, twelve words or fewer, imperative, no preamble, no options, no quotes. It must be something the person can start within a minute with their hands. Never invent names of people."+(a?"\nThe thing they are on: "+a.text:"\nNothing is started; the oldest waiting item is: "+(landed()[0]||{}).text)+(f?"\nTonight's floor reading (1 low – 5 high; null = not logged): "+JSON.stringify(f.v):"")+"\nRecent done today: "+items().filter(i=>i.state==="done").slice(-3).map(i=>i.text).join(" | ");
-  try{const r=await sample(prompt,{modelTier:"quick",signal:stepCtl.signal,onText:u=>{out.textContent=u.text;}});out.textContent=r.text.trim();$("stepToDump").hidden=false;$("stepToDump").onclick=()=>land(r.text.trim());}
-  catch(e){if(e&&e.code==="cancelled")return;out.textContent=e&&e.code==="not_granted"?"You said no to asking. Fine — the box still works.":"Couldn't ask right now"+(e&&e.code?" ("+e.code+")":"")+".";out.classList.add("muted");}};
-$("askStages").onclick=async()=>{if(!sample)return;const pick=S.items[S.bigPick];if(!pick)return;const out=$("stagesOut");out.textContent="Breaking it down…";$("stages").innerHTML="";$("landStages").hidden=true;
-  try{const r=await sample.json('Break this one-person project into 3 to 6 stages. Return ONLY JSON: {"stages":[{"title":"<=8 words","first_step":"<=12 words, physical, startable in a minute"}]}. No names of people. Project: '+pick.text,{modelTier:"default"});S.stages=(r&&r.stages||[]).slice(0,6);out.textContent="Stages for: "+pick.text;$("stages").innerHTML=S.stages.map((s,i)=>'<div class="stage"><span class="no">'+(i+1)+'</span><div class="b"><div class="h">'+esc(s.title)+'</div><div class="f">'+esc(s.first_step)+'</div></div></div>').join("");$("landStages").hidden=!S.stages.length;}
-  catch(e){out.textContent=e&&e.code==="not_granted"?"You said no to asking.":"Couldn't break it down"+(e&&e.code?" ("+e.code+")":"")+".";}};
-$("landStages").onclick=async()=>{const pick=S.items[S.bigPick];if(!pick||!S.stages)return;const n=S.stages.length;for(const s of S.stages){await land(s.first_step+" — "+s.title,pick.id);}await put("items",pick.id,{state:"parked",broken_down:true});S.bigPick=null;S.stages=null;$("stages").innerHTML="";$("landStages").hidden=true;$("stagesOut").textContent="Landed "+n+" stages as starts; the big one is parked.";go("now");};
-
-// raw door — RAW_SHAPE_v1 exactly as 6_APP/Code.gs buildRawBody_ writes it; the page keeps a receipt, never the text
-const HELD_KEY="now.walker.held";
-function heldQ(){try{return JSON.parse(localStorage.getItem(HELD_KEY)||"[]");}catch(e){return[];}}
-function heldSet(q){try{localStorage.setItem(HELD_KEY,JSON.stringify(q));}catch(e){}renderHeld();try{render();}catch(e){}}
-function renderHeld(){const q=heldQ();$("heldRow").hidden=!q.length;$("heldNote").textContent=q.length?q.length+" queued on this phone · "+(darkDoor()?"held until 06:00 ET":"tries at next DUMP"):"";syncDoorLamp();}
-async function sha256(s){const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest("SHA-256",b);return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("");}
-function rawStamp(d){const p=n=>String(n).padStart(2,"0");return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+"T"+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds());}
-async function rawBody(text){const asOf=new Date().toISOString().replace(/\.\d{3}Z$/,"Z");const hash=await sha256(text);const bytes=new TextEncoder().encode(text).length;return {hash,bytes,body:"---\nschema: \"lab.intake.raw/v1\"\nas_of: \""+asOf+"\"\nsource_hash: \""+hash+"\"\nbytes: "+bytes+"\nsanitizer: \"STEWARD\"\nvessel_read_restriction: \"STEWARD only (R-050)\"\norigin_surface: \"walker\"\ntruncated: false\n---\n"+text+"\n"};}
-function dumpHoldToast(err){
-  if((err&&err.code)==="dark"||(!err&&darkDoor()))return "Dark until 06:00 ET — held on this phone.";
-  if(err&&err.code==="unauthorized")return "Door key refused — held on this phone.";
-  if(err&&err.code==="network")return "Door unreachable (network) — queued on this phone.";
-  if(err&&err.code==="not_granted")return "Not allowed to write Drive — queued on this phone.";
-  if(!doorUrl()&&!doorKey())return "No door URL or door key on this phone — queued. Open STUCK → Raw door (public copy ships neither).";
-  if(!doorUrl())return "No door URL on this phone — queued. Open STUCK → Raw door.";
-  if(!doorKey())return "No door key on this phone — queued. Open STUCK → Raw door.";
-  return "No door right now — queued on this phone. Open STUCK → Raw door.";}
-async function landRawViaDoor(text,receiptId){const url=doorUrl(),key=doorKey();if(!url||!key)throw {code:"no_door"};const id=receiptId||(crypto.randomUUID?crypto.randomUUID():uid());
-  const payload=JSON.stringify({key:key,text:String(text||""),receipt_id:id,schema:"lab.intake.raw/v1",origin_surface:"walker"});
-  let res,raw;
-  // text/plain keeps the POST a CORS "simple request" (no preflight) so the browser can follow the Apps Script 302 → echo GET
-  try{res=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:payload});raw=await res.text();}
-  catch(e){throw {code:"network",receipt_id:id};}
-  if(!raw)throw {code:"unauthorized",receipt_id:id};
-  let j;try{j=JSON.parse(raw);}catch(e){throw {code:"bad_response",receipt_id:id};}
-  if(!j||!j.ok)throw {code:"door_"+(j&&j.code||res.status||"?"),receipt_id:id};
-  await put("receipts",j.receipt_id,{at:new Date().toISOString(),receipt_id:j.receipt_id,bytes:j.bytes,origin_surface:"walker"});
-  return {receipt_id:j.receipt_id,bytes:j.bytes,total:j.bytes,ok:true};}
-async function landRawViaDrive(text,atIso){if(!mcp&&!accessToken())throw {code:"no_door"};const d=atIso?new Date(atIso):new Date();const id=(crypto.randomUUID?crypto.randomUUID():uid());const name="raw_"+rawStamp(d)+"_"+id+".md";const {hash,bytes,body}=await rawBody(text);const total=new TextEncoder().encode(body).length;
-  let f=null;
-  if(mcp){const r=await mcp.callTool("Google Drive","create_file",{title:name,parentId:feedsFolder(),contentMimeType:"text/plain",disableConversionToGoogleType:true,textContent:body},{cache:false});
-    f=r&&r.payload;if(!f&&r&&r.content&&r.content[0]&&r.content[0].text){try{f=JSON.parse(r.content[0].text);}catch(e){f=null;}}if(!f&&r&&r.id)f=r;}
-  else{f=await createRawOnDrive(name,body);}
-  const size=f&&f.fileSize?parseInt(f.fileSize,10):null;const ok=size===total;
-  await put("receipts",name.replace(/\.md$/,""),{at:new Date().toISOString(),name,bytes,sha:hash,file_bytes:size,file_id:f&&f.id||null,readback:ok?"ok":"size mismatch"});
-  return {name,bytes,total,size,ok};}
-async function landRaw(text,atIso,receiptId){if(darkDoor())throw {code:"dark"};
-  if(doorKeyed())return landRawViaDoor(text,receiptId);
-  return landRawViaDrive(text,atIso);}
-async function flushHeld(){const q=heldQ();if(!q.length||darkDoor()||!doorOpen())return;const rest=[];for(const h of q){try{await landRaw(h.text,h.at,h.receipt_id);}catch(e){const rid=(e&&e.receipt_id)||h.receipt_id;rest.push({text:h.text,at:h.at,receipt_id:rid});}}heldSet(rest);}
-async function dumpRaw(t){const rid=(crypto.randomUUID?crypto.randomUUID():uid());
-  try{const r=await landRaw(t,null,rid);renderHeld();toast("Dumped → raw · "+(r.total||r.bytes||0)+" B"+(r.ok?" · ok":""));}
-  catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString(),receipt_id:(e&&e.receipt_id)||rid});heldSet(q);toast(dumpHoldToast(e));}}
-
-
-/* NOW-V1 · GH: the second door. In the artifact runtime the door is the Claude "Google Drive"
-   connector; hosted anywhere else there is no connector, so this signs Joe in with his own
-   Google account and writes the same RAW_SHAPE_v1 file with Drive v3 multipart — byte-identical
-   to what createRawOnDrive() in door.ts sends. The client ID lives on this phone only. */
-var CID_KEY="now.client_id", TOK_KEY="now.token", EML_KEY="now.email";
-var GIS_SRC="https://accounts.google.com/gsi/client";
-var DRIVE_SCOPES="https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
-function clientId(){try{return (localStorage.getItem(CID_KEY)||"").trim();}catch(e){return "";}}
-function setClientId(v){try{localStorage.setItem(CID_KEY,(v||"").trim());}catch(e){}}
-function tokenBag(){try{var b=JSON.parse(sessionStorage.getItem(TOK_KEY)||"null");return (b&&b.access&&b.exp>Date.now()+15000)?b:null;}catch(e){return null;}}
-function setToken(b){try{if(b)sessionStorage.setItem(TOK_KEY,JSON.stringify(b));else sessionStorage.removeItem(TOK_KEY);}catch(e){}}
-function accessToken(){var b=tokenBag();return b?b.access:null;}
-function signedEmail(){try{return sessionStorage.getItem(EML_KEY);}catch(e){return null;}}
-var gisLoading=null;
-function loadGIS(){if(window.google&&window.google.accounts&&window.google.accounts.oauth2)return Promise.resolve(true);
-  if(gisLoading)return gisLoading;
-  gisLoading=new Promise(function(res){var sc=document.createElement("script");sc.src=GIS_SRC;sc.async=true;sc.defer=true;
-    sc.onload=function(){res(!!(window.google&&window.google.accounts&&window.google.accounts.oauth2));};
-    sc.onerror=function(){res(false);};document.head.appendChild(sc);});
-  return gisLoading;}
-async function googleSignIn(){var id=clientId();if(!id)return {ok:false,error:"NO_CLIENT_ID"};
-  var ready=await loadGIS();if(!ready)return {ok:false,error:"GIS_BLOCKED"};
-  return new Promise(function(resolve){
-    try{
-      var c=window.google.accounts.oauth2.initTokenClient({client_id:id,scope:DRIVE_SCOPES,callback:function(resp){
-        if(!resp||!resp.access_token){resolve({ok:false,error:(resp&&resp.error)||"NO_TOKEN"});return;}
-        setToken({access:resp.access_token,exp:Date.now()+Math.max(60,Number(resp.expires_in)||3600)*1000});
-        fetch("https://www.googleapis.com/oauth2/v2/userinfo",{headers:{Authorization:"Bearer "+resp.access_token}})
-          .then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
-          .then(function(j){try{if(j&&j.email)sessionStorage.setItem(EML_KEY,j.email);}catch(e){}resolve({ok:true,email:j&&j.email});});
-      }});
-      c.requestAccessToken({prompt:"consent"});
-    }catch(e){resolve({ok:false,error:"GIS_ERROR"});}
-  });}
-function googleSignOut(){var t=accessToken();setToken(null);try{sessionStorage.removeItem(EML_KEY);}catch(e){}
-  if(t&&window.google&&window.google.accounts&&window.google.accounts.oauth2)try{window.google.accounts.oauth2.revoke(t,function(){});}catch(e){}
-  renderDoor();syncDoorLamp();}
-async function createRawOnDrive(name,body){var t=accessToken();if(!t)throw {code:"no_auth"};
-  var meta={name:name,parents:[feedsFolder()],mimeType:"text/plain"};
-  var boundary="nowshell_"+uid();
-  var payload="--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(meta)+"\r\n"+
-    "--"+boundary+"\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"+body+"\r\n--"+boundary+"--";
-  var res=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size",
-    {method:"POST",headers:{Authorization:"Bearer "+t,"Content-Type":"multipart/related; boundary="+boundary},body:payload});
-  if(!res.ok)throw {code:"drive_"+res.status};
-  var j=await res.json();if(!j.id)throw {code:"drive_no_id"};
-  return {id:j.id,fileSize:j.size!=null?j.size:"-1"};}
-/* NOW-V1 · R-068: the door is shut 02:00-05:59 ET. door.ts held the dump and made no
-   Drive call in that window; the hosted copy wrote straight through, which is the one
-   place it did not behave like the older version. Held here, flushed after 06:00. */
-function darkDoor(){var h=etHour();return h>=2&&h<6;}
-function doorOpen(){return !darkDoor()&&(doorKeyed()||!!mcp||(!!accessToken()&&!!feedsFolder()));}
-function syncDoorLamp(){var q=heldQ();
-  if(q.length){lamp("lampDoor",(doorOpen()||darkDoor())?"warn":"bad",q.length+(q.length>1?" dumps":" dump")+" waiting on this phone — "+(darkDoor()?"the door is shut until 06:00 ET":"the next DUMP tries them again"));}
-  else if(doorKeyed()){lamp("lampDoor","ok","Door open — DUMP posts to the keyed door (URL and key on this phone only).");}
-  else if(mcp){lamp("lampDoor","ok","Door open via the Claude connector — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
-  else if(accessToken()){lamp("lampDoor","ok","Door open via your Google sign-in"+(signedEmail()?" ("+signedEmail()+")":"")+" — DUMP writes a raw_* stamp straight into the Lab feeds folder.");}
-  else if(darkDoor()){lamp("lampDoor","warn","Dark until 06:00 ET — the door is shut by the rule. Dumps hold on this phone and go after six.");}
-  else {lamp("lampDoor","bad","No door — dumps queue on this phone. Open STUCK → Raw door and enter a door URL and door key (public copy ships neither).");}}
-function renderDoor(){var card=$("doorCard");if(!card)return;
-  card.hidden=!!mcp;if(mcp)return;
-  var ubox=$("doorUrlBox");if(ubox&&document.activeElement!==ubox&&ubox.value!==doorUrl())ubox.value=doorUrl();
-  var kbox=$("doorKeyBox");if(kbox&&document.activeElement!==kbox&&kbox.value!==doorKey())kbox.value=doorKey();
-  var acts=$("doorActs");acts.innerHTML="";
-  var out=$("doorOut");
-  if(doorKeyed()){out.textContent="Door URL and door key saved on this phone. DUMP posts to the keyed door — public repo ships neither.";out.classList.remove("muted");
-    acts.append(btn("Clear door","sm",function(){setDoorUrl("");setDoorKey("");if(ubox)ubox.value="";if(kbox)kbox.value="";renderDoor();syncDoorLamp();renderHeld();}));}
-  else {out.textContent="Enter a door URL and a door key once below. This public repo ships neither. After that, DUMP is one tap — the key goes in the JSON body, never in the URL.";out.classList.add("muted");
-    acts.append(btn("Save door","primary",function(){var u=(ubox&&ubox.value||"").trim(),k=(kbox&&kbox.value||"").trim();
-      setDoorUrl(u);setDoorKey(k);
-      if(!u&&!k){toast("Paste a door URL and a door key first.");renderDoor();syncDoorLamp();return;}
-      if(!u){toast("Door key saved — still need a door URL. Public copy ships neither.");renderDoor();syncDoorLamp();return;}
-      if(!k){toast("Door URL saved — still need a door key. Public copy ships neither.");renderDoor();syncDoorLamp();return;}
-      toast("Door URL and door key saved on this phone.");renderDoor();syncDoorLamp();flushHeld();renderHeld();}));}
-}
-
-/* NOW-V1 · GH: carry the store between copies. Every copy of NOW — this one, the
-   artifact one, a second phone — keeps its own store, so the only honest way to move
-   what is in one is to hand you the file. Export writes it; import merges it, newest
-   write wins per record. Credentials are never exported. */
-var EXPORT_SCHEMA="joeos.now.export/v1";
-function exportBundle(){var b={schema:EXPORT_SCHEMA,at:nowIso(),from:location.origin+location.pathname,
-  store:{items:S.items,cards:S.cards,decisions:S.decisions,floor:S.floor,receipts:S.receipts,counters:S.counters},
-  held:heldQ(),lanes:readLanes()};
-  return JSON.stringify(b,null,1);}
-function exportGo(){try{
-  var name="now_store_"+rawStamp(new Date())+".json";
-  var blob=new Blob([exportBundle()],{type:"application/json"});
-  var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download=name;
-  document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
-  var n=0;COLS.forEach(function(k){n+=Object.keys(S[k]||{}).length;});
-  toast("Exported "+n+" records to "+name);
-  }catch(e){toast("Could not write the file here.");}}
-function newer(a,b){/* prefer the record that was written last; a record with no stamp loses */
-  var x=Date.parse((a&&(a.at||a.started_at))||0)||0,y=Date.parse((b&&(b.at||b.started_at))||0)||0;return x>=y?a:b;}
-async function importBundle(text){var b;try{b=JSON.parse(text);}catch(e){toast("That file is not readable JSON.");return;}
-  if(!b||b.schema!==EXPORT_SCHEMA||!b.store){toast("That is not a NOW export file.");return;}
-  var added=0,merged=0;
-  COLS.forEach(function(k){var incoming=b.store[k]||{};
-    for(var id in incoming){var inc=incoming[id];if(!inc||typeof inc!=="object")continue;
-      if(!S[k][id]){S[k][id]=inc;added++;}
-      else{var win=newer(S[k][id],inc);if(win!==S[k][id]){S[k][id]=win;merged++;}}}});
-  if(Array.isArray(b.held)&&b.held.length){var have=heldQ();var seen={};
-    have.concat(b.held).forEach(function(h){if(h&&h.text){var key=h.text+"|"+(h.at||"");seen[key]=h;}});
-    heldSet(Object.keys(seen).map(function(k2){return seen[k2];}));}
-  if(b.lanes&&typeof b.lanes==="object"){var log=readLanes();
-    for(var day in b.lanes){log[day]=Object.assign({},log[day]||{},b.lanes[day]);}writeLanes(log);}
-  cache();
-  /* push everything up if a shared store is attached */
-  if(db){for(var i=0;i<COLS.length;i++){var k3=COLS[i];for(var id2 in S[k3]){try{await col(k3).doc(id2).set(S[k3][id2]);}catch(e){}}}}
-  render();toast("Imported — "+added+" new, "+merged+" updated.");}
-function renderStore(){var acts=$("storeActs");if(!acts)return;acts.innerHTML="";
-  var n=0;COLS.forEach(function(k){n+=Object.keys(S[k]||{}).length;});
-  acts.append(btn(n?"Export "+n+" records":"Export","sm",exportGo));
-  acts.append(btn("Import a file","sm",function(){$("impFile").click();}));}
-
-// starts (the walker's only prose; deleted at Done)
-async function land(text,parent){text=(text||"").trim();if(!text)return;const id=nowIso().replace(/[-:.]/g,"").slice(0,15)+"_"+uid().slice(-4);await put("items",id,{text,at:nowIso(),state:"landed",words:words(text),parent:parent||null});return id;}
-async function dumpGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;const rid=(crypto.randomUUID?crypto.randomUUID():uid());const h={text:t,at:new Date().toISOString(),k:uid(),receipt_id:rid};const q=heldQ();q.push(h);heldSet(q);box.value="";box.style.height="";
-  if(darkDoor()){toast("Dark until 06:00 ET — held on this phone.");return;}
-  if(!doorOpen()){toast(dumpHoldToast());return;}
-  let r=null;try{r=await landRaw(h.text,h.at,h.receipt_id);const rest=heldQ().filter(x=>x.k!==h.k);heldSet(rest);}catch(e){const rid2=(e&&e.receipt_id)||h.receipt_id;const q2=heldQ().map(x=>x.k===h.k?Object.assign({},x,{receipt_id:rid2}):x);heldSet(q2);toast(dumpHoldToast(e));return;}
-  toast("Dumped → raw · "+(r.total||r.bytes||0)+" B"+(r.ok?" · ok":""));flushHeld();}
-async function startGo(){const box=$("dumpBox");const t=box.value.trim();if(!t)return;box.value="";box.style.height="";const id=await land(t);toast("Start waiting. "+t.slice(0,32)+(t.length>32?"…":""),()=>del("items",id));await flushHeld();const rid=(crypto.randomUUID?crypto.randomUUID():uid());try{await landRaw(t,null,rid);}catch(e){const q=heldQ();q.push({text:t,at:new Date().toISOString(),receipt_id:(e&&e.receipt_id)||rid});heldSet(q);}}
-// one button: tap = Land, hold = Start
-(function(){const b=$("dumpGo");let t=null,held=false,down=false;const arm=()=>{held=true;b.classList.add("hold");b.textContent="START";if(navigator.vibrate)navigator.vibrate(12);};const reset=()=>{clearTimeout(t);t=null;down=false;held=false;b.classList.remove("hold");b.textContent="DUMP";};
-b.oncontextmenu=e=>{e.preventDefault();return false;};
-b.onpointerdown=e=>{if(e.button&&e.button!==0)return;down=true;held=false;clearTimeout(t);t=setTimeout(arm,550);};
-b.onpointerup=e=>{if(!down)return;const h=held;reset();if(h)startGo();else dumpGo();};
-b.onpointercancel=reset;b.onpointerleave=e=>{if(down&&!held)reset();};
-b.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();dumpGo();}};})();
-$("dumpBox").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();dumpGo();}});
-$("dumpBox").addEventListener("input",e=>{e.target.style.height="auto";e.target.style.height=Math.min(160,e.target.scrollHeight)+"px";});
-
-// toast / undo
-let toastT=null,undoFn=null,undoLeft=3;
-function toast(text,undo){$("toastText").textContent=text;undoFn=undo;undoLeft=3;$("toastUndo").textContent="UNDO · 3";$("toastUndo").hidden=!undo;$("toast").hidden=false;clearInterval(toastT);toastT=setInterval(()=>{undoLeft--;if(undoLeft<=0){clearInterval(toastT);$("toast").hidden=true;undoFn=null;}else $("toastUndo").textContent="UNDO · "+undoLeft;},1000);}
-$("toastUndo").onclick=()=>{if(undoFn)undoFn();clearInterval(toastT);$("toast").hidden=true;undoFn=null;};
-function lamp(id,state,msg){const el=$(id);el.className="lamp "+state;el.dataset.msg=msg;}
-$("lampStore").onclick=()=>toast($("lampStore").dataset.msg||"store");
-$("lampDoor").onclick=()=>toast($("lampDoor").dataset.msg||"door");
-
-// routes
-function go(r){S.route=r;document.querySelectorAll(".route").forEach(s=>s.classList.toggle("on",s.id==="r-"+r));document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.r===r));render();try{localStorage.setItem("now.walker.route",r);}catch(e){}}
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>go(t.dataset.r));
-
-// boot
-function boot(){uncache();clearDoorLater();renderHeld();let r="now";try{r=localStorage.getItem("now.walker.route")||"now";}catch(e){}go(r);pullCards();
-  if(window.claude&&window.claude.use){window.claude.use("db").then(d=>{if(d){db=d;dbState="db";lamp("lampStore","ok","Store live — walker_v0 is keeping your starts, cards and receipts.");subscribe();}else{lamp("lampStore","bad","Store not connected — memory only. Anything here is gone on reload.");}});
-    window.claude.use("sample").then(s=>{sample=s;render();});
-    window.claude.use("mcp").then(m=>{mcp=m;if(m){lamp("lampDoor","ok","Door open — DUMP writes a raw_* stamp straight into the Lab feeds folder.");flushHeld();}else{lamp("lampDoor","bad","No door — dumps queue on this phone until it opens.");}renderHeld();});}
-  else{lamp("lampStore","warn","On-device store — this phone keeps your starts, cards, floor and receipts. Nothing syncs to another device.");syncDoorLamp();}
-  var du=$("doorUrlBox");if(du)du.value=doorUrl();
-  var dk=$("doorKeyBox");if(dk)dk.value=doorKey();
-  renderDoor();syncDoorLamp();renderStore();
-  var imp=$("impFile");if(imp)imp.addEventListener("change",function(){var f=imp.files&&imp.files[0];if(!f)return;
-    var fr=new FileReader();fr.onload=function(){importBundle(String(fr.result));imp.value="";};fr.onerror=function(){toast("Could not read that file.");};fr.readAsText(f);});
-}
-// NOW-V1: home-screen install. The icon is the designed asset set shipped beside this
-// page (192 / 512 / maskable / apple-touch), not a shape drawn at runtime, and the manifest
-// is a real file rather than a blob URL.
-(function(){try{
-  var head=document.head;
-  var meta=function(n,c){var m=document.createElement("meta");m.setAttribute("name",n);m.content=c;head.appendChild(m);};
-  var link=function(rel,href,attrs){var l=document.createElement("link");l.rel=rel;l.href=href;if(attrs){for(var k in attrs)l.setAttribute(k,attrs[k]);}head.appendChild(l);};
-  var vp=document.querySelector('meta[name="viewport"]');
-  var VP="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no";
-  if(vp)vp.setAttribute("content",VP);else meta("viewport",VP);
-  meta("apple-mobile-web-app-capable","yes");
-  meta("mobile-web-app-capable","yes");
-  meta("apple-mobile-web-app-status-bar-style","black-translucent");
-  meta("apple-mobile-web-app-title","NOW");
-  meta("theme-color","#0b0f13");
-  link("apple-touch-icon","apple-touch-icon.png",{sizes:"180x180"});
-  link("icon","icon-192.png",{type:"image/png",sizes:"192x192"});
-  link("icon","icon.svg",{type:"image/svg+xml"});
-  link("manifest","manifest.webmanifest");
-}catch(e){}})();
-
-// sections keep their frame; what is too tall scrolls inside it, with a fade when there is more
-function fades(){[["firstCard",0],["queue",1]].forEach(([id,keep])=>{const el=$(id);if(!el)return;
-  const over=el.scrollHeight-el.clientHeight>2;el.classList.toggle("more",over);if(!keep&&!over)el.scrollTop=0;});}
-const _render=render;render=function(){_render.apply(this,arguments);$("firstCard").scrollTop=0;requestAnimationFrame(fades);};
-window.addEventListener("resize",()=>requestAnimationFrame(fades));
-document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")pullCards();});
-setInterval(function(){if(document.visibilityState==="visible")pullCards();},5*60*1000);
-if(navigator.serviceWorker){navigator.serviceWorker.addEventListener("message",function(e){if(e&&e.data&&e.data.type==="pull")pullCards();});}
-if(window.claude&&window.claude.hot&&window.claude.hot.snapshot){window.claude.hot.snapshot(()=>({draft:$("dumpBox").value,route:S.route}));}
-const hotStart=data=>{boot();if(data&&data.draft)$("dumpBox").value=data.draft;if(data&&data.route)go(data.route);};
-if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(hotStart);else hotStart((window.claude&&window.claude.hot&&window.claude.hot.data)||{});
+  return { TZ, et, isNight, minutesToCutoff, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
+    PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, LIVE_OPS, canSend,
+    wire, pullBody, classify, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards };
 })();
 </script>
 
+<script>
+(function () {
+  "use strict";
+  const C = CORE;
+  const BUILD = "1.0.0";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const nowIso = () => new Date().toISOString();
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10));
+  const ago = (iso) => { if (!iso) return ""; const s = (Date.now() - Date.parse(iso)) / 1e3; if (s < 60) return "now"; if (s < 3600) return Math.floor(s / 60) + " m"; if (s < 86400) return Math.floor(s / 3600) + " h"; return Math.floor(s / 86400) + " d"; };
+  const clockOf = (iso) => (iso ? C.et(new Date(iso)).clock : "");
+  const bytesOf = (s) => new TextEncoder().encode(s).length;
+
+  /* ---------- this phone's memory: one namespace, `now.*` ---------- */
+  const K = { store: "now.store.v1", v0: "now.walker.v0", held: "now.walker.held", stamp: "now.last_pull_stamp", lanes: "now.lanes.v1", route: "now.walker.route", url: "now.door_url", key: "now.door_key" };
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); } catch (e) {} },
+    json(k, dflt) { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? dflt : v; } catch (e) { return dflt; } },
+  };
+  function load() {
+    const raw = ls.get(K.store);
+    if (raw) { try { return C.normalize(JSON.parse(raw)); } catch (e) {} }
+    // First launch of 1.x: carry 0.9.x across. The old keys are left exactly as they were,
+    // so rolling back to 0.9.6 still finds its own store.
+    return C.migrate(ls.json(K.v0, null), ls.json(K.held, []), ls.get(K.stamp));
+  }
+  let S = load();
+  function save() {
+    const keys = Object.keys(S.receipts);
+    if (keys.length > 400) keys.sort((a, b) => String(S.receipts[a].at).localeCompare(String(S.receipts[b].at))).slice(0, keys.length - 400).forEach((k) => delete S.receipts[k]);
+    ls.set(K.store, JSON.stringify(S));
+  }
+  function commit() { save(); render(); }
+
+  /* ---------- the door: one endpoint, both directions ---------- */
+  const doorUrl = () => (ls.get(K.url) || "").trim();
+  const doorKey = () => (ls.get(K.key) || "").trim();
+  const keyed = () => !!(doorUrl() && doorKey());
+  const floorRed = () => { const f = latestFloor(); return !!(f && Date.now() - Date.parse(f.at) < 12 * 3600e3 && C.chipFor(f.v).red); };
+  const dark = () => (C.isNight() ? "night" : floorRed() ? "red" : null);
+
+  /* text/plain keeps the POST a CORS "simple request" — no preflight — so the browser follows
+     the door's 302 to its echo and reads the JSON there (the 0.9.5 fix). */
+  async function post(body) {
+    const url = doorUrl();
+    if (!url || !body.key) throw { code: "no_door" };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 30000);
+    let res, raw;
+    try { res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), signal: ctl.signal }); raw = await res.text(); }
+    catch (e) { throw { code: navigator.onLine === false ? "offline" : "network" }; }
+    finally { clearTimeout(t); }
+    // An empty body is the door refusing before it reads anything: a wrong key (or, at the
+    // live door, a body over 32 KB or unreadable JSON — which this phone never sends).
+    if (!raw) throw { code: "unauthorized" };
+    let j;
+    try { j = JSON.parse(raw); } catch (e) { throw { code: "bad_response" }; }
+    // The door answers {ok:false, code:<http-ish number>, error:<word>}; the word is the reason.
+    if (!j || !j.ok) throw { code: String((j && (j.error || j.code)) || "http_" + res.status) };
+    return j;
+  }
+
+  /* OUT — the outbox. Everything the phone sends the stack waits here until the door says ok.
+     `sendable` is what this door takes; the rest (floor, done, lanes at the @3 door) is parked
+     on the phone, in order, and goes the day the door lists those ops. */
+  const sendable = (e) => C.canSend(e.op, S.sync.ops);
+  const pending = () => S.outbox.filter((e) => sendable(e) && !e.dead);
+  const parkedOut = () => S.outbox.filter((e) => !sendable(e));
+  const deadOut = () => S.outbox.filter((e) => e.dead);
+  let flushing = null, flushTimer = null;
+  function enqueue(op, body, opts) {
+    const env = { id: (opts && opts.id) || uid(), op: op, at: nowIso(), body: body, tries: 0 };
+    if (opts && opts.holdMs) env.hold_until = Date.now() + opts.holdMs;
+    if (opts && opts.replace) S.outbox = S.outbox.filter((e) => !(e.op === op && opts.replace(e)));
+    S.outbox.push(env);
+    // Parked envelopes are small, but a door that never learns their op must not fill the phone.
+    const parked = parkedOut();
+    if (parked.length > 300) { const drop = {}; parked.slice(0, parked.length - 300).forEach((e) => { drop[e.id] = 1; }); S.outbox = S.outbox.filter((e) => !drop[e.id]); }
+    save();
+    if (sendable(env)) scheduleFlush(opts && opts.holdMs ? opts.holdMs + 50 : 0);
+    return env;
+  }
+  function scheduleFlush(ms) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, ms || 0); }
+  function flush() {
+    if (flushing) return flushing;
+    flushing = (async () => {
+      if (!keyed() || C.isNight()) return;
+      const tried = new Set();
+      let later = null, stopped = false;
+      // Round after round until nothing new arrived meanwhile — a second DUMP made while the
+      // first is in the air goes in this flush, not five minutes later.
+      while (!stopped) {
+        const round = S.outbox.filter((e) => !tried.has(e.id));
+        if (!round.length) break;
+        for (const env of round) {
+          tried.add(env.id);
+          if (!S.outbox.some((e) => e.id === env.id)) continue;           // undone meanwhile
+          if (!sendable(env) || env.dead) continue;
+          if (env.hold_until && env.hold_until > Date.now()) { later = Math.min(later || Infinity, env.hold_until); continue; }
+          try {
+            acked(env, await post(C.wire(env, doorKey(), BUILD)));
+          } catch (e) {
+            const code = (e && e.code) || "?";
+            const verdict = C.classify(code);
+            S.sync.err_out = code;
+            if (verdict === "stop") { stopped = true; break; }
+            if (verdict === "refused") { S.sync.ops = S.sync.ops.filter((o) => o !== env.op); continue; }
+            if (verdict === "final") { refusedFinal(env, code); continue; }
+            env.tries = (env.tries || 0) + 1; env.last_err = code;
+          }
+        }
+      }
+      if (later) scheduleFlush(later - Date.now() + 50);
+    })().finally(() => { flushing = null; commit(); });
+    return flushing;
+  }
+  /* The door will never take this one as it is. An answer to a card that expired or vanished
+     is dropped and the card says so; a dump keeps its text on the phone, marked, until you
+     retry it or let it go — a dump is never thrown away for you. */
+  function refusedFinal(env, code) {
+    if (env.op === "card_answer") {
+      S.outbox = S.outbox.filter((e) => e.id !== env.id);
+      const c = S.cards[env.body.card_id];
+      if (c && c.answered) c.answered.refused = code;
+    } else {
+      env.dead = code;
+    }
+  }
+  function acked(env, j) {
+    S.outbox = S.outbox.filter((e) => e.id !== env.id);
+    S.sync.pushed_at = nowIso();
+    S.sync.err_out = null;
+    if (env.op === "dump") {
+      const mine = bytesOf(String(env.body.text || ""));
+      const id = String(j.receipt_id || env.id);
+      S.receipts[id] = { id: id, at: nowIso(), bytes: mine, door_bytes: j.bytes == null ? null : j.bytes, readback: j.bytes == null ? "no count" : Number(j.bytes) === mine ? "ok" : "size mismatch" };
+    }
+    if (env.op === "card_answer" && S.cards[env.body.card_id] && S.cards[env.body.card_id].answered) S.cards[env.body.card_id].answered.sent = true;
+  }
+
+  /* IN — the pull. The stack answers with the cards waiting on you, and may add
+     starts for your NOW list and one line of brief. */
+  let pulling = null;
+  function pull() {
+    if (pulling) return pulling;
+    pulling = (async () => {
+      if (!keyed() || C.isNight()) return;
+      const f = latestFloor();
+      try {
+        const before = S.sync.ops.join();
+        C.mergePull(S, await post(C.pullBody(doorKey(), f)), nowIso(), C.floorBand(f));
+        if (S.sync.ops.join() !== before && pending().length) scheduleFlush(0);   // the door just learned an op: send what was parked for it
+      } catch (e) { S.sync.err_in = (e && e.code) || "?"; }
+    })().finally(() => { pulling = null; commit(); });
+    return pulling;
+  }
+  /* Answers go out before the pull, so the cards that come back already know. */
+  async function sync() { await flush(); await pull(); }
+
+  /* ---------- starts: the only prose kept on the phone, deleted at Done ---------- */
+  const startsIn = (state) => Object.values(S.starts).filter((x) => x.state === state).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  function waiting() {
+    const today = C.et().day;
+    return Object.values(S.starts).filter((x) => x.state === "waiting" || (x.state === "parked" && x.until && x.until <= today)).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  }
+  const active = () => startsIn("started")[0] || null;
+  function latestFloor() { return Object.values(S.floor).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0] || null; }
+  const floorCode = () => { const f = latestFloor(); return f ? C.chipFor(f.v).st : null; };
+
+  function land(text, opts) {
+    text = String(text || "").trim();
+    if (!text) return null;
+    const id = (opts && opts.id) || uid();
+    S.starts[id] = { id: id, text: text, at: nowIso(), state: "waiting", parent: (opts && opts.parent) || null, from: "phone" };
+    return id;
+  }
+  function start(o) {
+    const cur = active();
+    if (cur && cur.id !== o.id) Object.assign(cur, { state: "waiting", started_at: null, timer_end: null });
+    paused = false;
+    Object.assign(S.starts[o.id], { state: "started", started_at: nowIso(), timer_end: new Date(Date.now() + 25 * 60e3).toISOString(), until: null });
+    go("now");
+  }
+  /* Done tells the stack too — a start it filed is closed there, and a start you filed is
+     matched to its dump by the same id. Held three seconds so UNDO can take it back. */
+  function finish(a, outcome) {
+    outcome = outcome || "done";
+    const day = C.et().day;
+    const keep = Object.assign({}, a);
+    delete S.starts[a.id];
+    if (a.from === "stack") S.gone[a.id] = nowIso();
+    if (outcome === "done") S.counters[day] = { day: day, done: ((S.counters[day] || {}).done || 0) + 1, at: nowIso() };
+    const env = enqueue("done", { ref: a.id, from: a.from || "phone", outcome: outcome, words: C.words(a.text) }, { holdMs: 3500 });
+    commit();
+    toast((outcome === "done" ? "Done. " : "Dropped. ") + a.text.slice(0, 40), () => {
+      S.outbox = S.outbox.filter((e) => e.id !== env.id);
+      S.starts[keep.id] = keep;
+      delete S.gone[keep.id];
+      if (outcome === "done") S.counters[day].done = Math.max(0, S.counters[day].done - 1);
+      commit();
+    });
+  }
+  function notToday(o) { Object.assign(S.starts[o.id], { state: "parked", until: C.shiftDay(C.et().day, 1) }); commit(); }
+
+  /* ---------- DUMP: tap sends it out and forgets it; hold keeps it here as a start ---------- */
+  function takeBox() {
+    const box = $("dumpBox"), t = box.value.trim();
+    if (!t) return "";
+    const n = bytesOf(t);
+    if (n > C.DUMP_MAX_BYTES) { toast("Too long for one dump (" + Math.ceil(n / 1024) + " KB; the door takes " + Math.floor(C.DUMP_MAX_BYTES / 1024) + " KB). Split it — nothing was sent."); return ""; }
+    box.value = ""; box.style.height = "";
+    return t;
+  }
+  async function dumpGo() {
+    const t = takeBox();
+    if (!t) return;
+    const env = enqueue("dump", { text: t });
+    commit();
+    if (C.isNight()) { toast("Dark until 06:00 ET — held on this phone."); return; }
+    if (!keyed()) { toast(noDoorWhy() + " — held on this phone."); return; }
+    await flush();
+    const r = S.receipts[env.id];
+    if (r) toast("Out → raw · " + r.bytes + " B" + (r.readback === "ok" ? " · ok" : r.readback === "size mismatch" ? " · size mismatch" : ""));
+    else if (env.dead) toast("The door refused it (" + env.dead + ") — kept on this phone. STUCK → The door.");
+    else toast(outWhy() + " — held on this phone.");
+  }
+  function startGo() {
+    const t = takeBox();
+    if (!t) return;
+    const id = uid();
+    land(t, { id: id });
+    enqueue("dump", { text: t }, { id: id });
+    commit();
+    toast("Start waiting. " + t.slice(0, 32) + (t.length > 32 ? "…" : ""), () => {
+      delete S.starts[id];
+      commit();
+    });
+  }
+
+  /* ---------- CARDS ---------- */
+  function answer(c, choice) {
+    const live = S.cards[c.id];
+    if (!live || live.answered || C.cardExpired(live, Date.now())) return;
+    live.answered = { choice: choice, at: nowIso(), sent: false };
+    const env = enqueue("card_answer", { card_id: c.id, choice: choice }, { holdMs: 3500 });
+    commit();
+    toast("Sent: " + choice, () => { S.outbox = S.outbox.filter((e) => e.id !== env.id); live.answered = null; commit(); });
+  }
+
+  /* ---------- FLOOR ---------- */
+  const draft = {};
+  function logFloor() {
+    const v = {};
+    C.VECTORS.forEach((k) => { v[k] = typeof draft[k] === "number" ? draft[k] : null; });
+    if (!Object.values(v).some((x) => typeof x === "number")) { toast("Nothing set — tap a number first."); return; }
+    const id = uid();
+    S.floor[id] = { id: id, at: nowIso(), v: v };
+    const env = enqueue("floor", { v: v }, { id: id, holdMs: 3500 });
+    C.VECTORS.forEach((k) => delete draft[k]);
+    commit();
+    toast("Logged the floor.", () => { delete S.floor[id]; S.outbox = S.outbox.filter((e) => e.id !== env.id); commit(); });
+  }
+
+  /* ---------- LANES (kept in now.lanes.v1, as 0.9.x wrote it) ---------- */
+  function toggleLane(key) {
+    const day = C.et().day, log = ls.json(K.lanes, {});
+    const d = Object.assign({}, log[day] || {});
+    const on = !d[key];
+    if (on) d[key] = true; else delete d[key];
+    if (Object.keys(d).length) log[day] = d; else delete log[day];
+    ls.set(K.lanes, JSON.stringify(log));
+    enqueue("lane", { day: day, lane: key, on: on }, { holdMs: 1500, replace: (e) => e.body.day === day && e.body.lane === key });
+    commit();
+  }
+
+  /* ---------- lamps: status is a lamp, never a sentence — tap for the sentence ---------- */
+  function noDoorWhy() {
+    if (!doorUrl() && !doorKey()) return "No door URL or key yet";
+    if (!doorUrl()) return "No door URL yet";
+    return "No door key yet";
+  }
+  /* Every door failure has a name you can act on. */
+  const FAIL = {
+    unauthorized: "Door key refused — check the key",
+    bad_response: "Door URL is wrong — it answered, but not like a door",
+    network: "Door unreachable (network)",
+    offline: "No signal",
+    rate_limited: "Door busy — too many writes this hour",
+    server: "Door error on its side",
+    write_failed: "The door could not write",
+    no_door: "No door on this phone",
+  };
+  const failName = (code) => FAIL[code] || "Door said " + code;
+  function outWhy() {
+    if (!keyed()) return noDoorWhy();
+    if (C.isNight()) return "Dark until 06:00 ET";
+    return S.sync.err_out ? failName(S.sync.err_out) : "Not sent yet";
+  }
+  function lamp(id, state, msg) { const el = $(id); el.className = "lamp " + state; el.dataset.msg = msg; }
+  function renderLamps() {
+    const q = pending().length, dead = deadOut().length, parked = parkedOut().length, n = C.isNight(), e = S.sync.err_out;
+    const tail = parked ? " " + parked + " floor/done/lane record" + (parked > 1 ? "s" : "") + " parked here until the door takes them." : "";
+    if (!keyed()) lamp("lampOut", "bad", noDoorWhy() + (q ? " — " + q + " waiting here" : "") + ". STUCK → The door.");
+    else if (n) lamp("lampOut", "warn", "Dark until 06:00 ET — the door is shut by the rule." + (q ? " " + q + " held; they go after six." : ""));
+    else if (e === "unauthorized" || e === "bad_response") lamp("lampOut", "bad", failName(e) + (q ? " — " + q + " held here" : "") + ". STUCK → The door.");
+    else if (dead) lamp("lampOut", "bad", dead + " the door refused — kept on this phone. STUCK → The door to retry.");
+    else if (q) lamp("lampOut", "warn", q + " waiting to go out — " + outWhy() + ". Next try on the next sync.");
+    else lamp("lampOut", "ok", "Everything the door takes is out." + (S.sync.pushed_at ? " Last sent " + clockOf(S.sync.pushed_at) + " ET." : "") + tail);
+
+    const p = S.sync.pulled_at, age = p ? Date.now() - Date.parse(p) : Infinity, open = C.openCards(S, Date.now()).length;
+    if (!keyed()) lamp("lampIn", "bad", "Nothing comes in without a door. STUCK → The door.");
+    else if (n) lamp("lampIn", "warn", "Dark until 06:00 ET — no pull, no ask." + (p ? " Last pull " + clockOf(p) + " ET." : ""));
+    else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || S.sync.err_in === "bad_response")) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
+    else if (!p) lamp("lampIn", "warn", "Never pulled yet.");
+    else if (age > 60 * 60e3) lamp("lampIn", "warn", "Last pull " + clockOf(p) + " ET, " + ago(p) + " ago — cards may be stale.");
+    else lamp("lampIn", "ok", "Pulled " + clockOf(p) + " ET — " + (open ? open + " card" + (open > 1 ? "s" : "") + " waiting on you." : "nothing waiting on you."));
+
+    const left = C.minutesToCutoff();
+    const cut = $("lampCut");
+    if (left == null) cut.hidden = true;
+    else { cut.hidden = false; lamp("lampCut", left <= 30 ? "bad" : left <= 90 ? "warn" : "ok", "02:00 cutoff in " + Math.floor(left / 60) + "h " + String(left % 60).padStart(2, "0") + "m. The rule is the rule."); }
+  }
+
+  /* ---------- rendering ---------- */
+  function btn(label, cls, fn) { const b = document.createElement("button"); b.className = "btn " + cls; b.textContent = label; b.onclick = fn; return b; }
+  let paused = false, pausedLeft = 0;
+  function fmtT(ms) { const s = Math.max(0, Math.round(ms / 1e3)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+  function tickTimer() {
+    const a = active(), el = $("timer");
+    $("timerRow").hidden = !a;
+    if (!a) return;
+    if (paused) { el.textContent = fmtT(pausedLeft); return; }
+    const left = Date.parse(a.timer_end || 0) - Date.now();
+    el.textContent = left <= 0 ? "-" + fmtT(-left) : fmtT(left);
+    el.classList.toggle("over", left <= 0);
+  }
+  function darkHtml(d) {
+    return d === "red" ? '<div class="big">Red floor</div>The box works. Log the floor again when it changes.'
+      : '<div class="big">Dark until 06:00 ET</div>The box works. Nothing else tonight.';
+  }
+
+  function renderNow() {
+    const d = dark();
+    $("phone").classList.toggle("dark", !!d);
+    $("nowDark").hidden = !d; $("nowBody").hidden = !!d;
+    if (d) $("nowDark").innerHTML = darkHtml(d);
+    const a = active(), q = waiting(), acts = $("firstActs");
+    acts.innerHTML = "";
+    const h2 = $("firstText");
+    if (a) {
+      $("firstTag").textContent = "Started · " + ago(a.started_at) + " ago";
+      h2.textContent = a.text; h2.className = a.text.length > 64 ? "long" : "";
+      $("firstWhy").textContent = "Do only this. Done closes it; Not now puts it back.";
+      acts.append(btn("Done", "primary", () => finish(a)), btn("Not now", "", () => { Object.assign(a, { state: "waiting", started_at: null, timer_end: null }); paused = false; commit(); }));
+    } else if (q.length) {
+      const p = C.pickFirst(q, floorCode());
+      const o = p.item;
+      $("firstTag").textContent = o.from === "stack" ? "Start this? · from the stack" : "Start this?";
+      h2.textContent = o.text; h2.className = o.text.length > 64 ? "long" : "";
+      $("firstWhy").textContent = C.words(o.text) > 12 ? "That's " + C.words(o.text) + " words — break it down under STUCK, or start it as is."
+        : (o.why || p.why) + " · " + ago(o.at) + " old.";
+      acts.append(btn("Start · 25m", "primary", () => start(o)), btn("Not today", "", () => notToday(o)));
+    } else {
+      $("firstTag").textContent = "First";
+      h2.textContent = "Nothing waiting. Type one thing."; h2.className = "";
+      $("firstWhy").textContent = "DUMP sends it out and forgets it. Hold to keep it until Done.";
+    }
+    tickTimer();
+
+    const today = C.et().day;
+    const rc = Object.values(S.receipts).filter((r) => r.at && C.et(new Date(r.at)).day === today).sort((x, y) => String(y.at).localeCompare(String(x.at)));
+    const qd = S.outbox.filter((e) => e.op === "dump" && !e.dead).length;
+    $("sOut").textContent = (rc.length ? rc.length + " out today" : "nothing out today") + (qd ? " · " + qd + " waiting" : "");
+    $("sOutAge").textContent = rc.length ? ago(rc[0].at) + (rc[0].readback === "ok" ? " · readback ok" : "") : "";
+    const dn = (S.counters[today] || {}).done || 0;
+    $("sDone").textContent = dn ? dn + " done" : "nothing yet";
+    $("sDoneAge").textContent = dn ? "today" : "";
+    const open = C.openCards(S, Date.now());
+    $("sCards").textContent = open.length ? open.length + " waiting on you" : "none waiting";
+    $("sCardsAge").textContent = open.length ? "oldest " + ago(open.slice().sort((x, y) => String(x.at || "").localeCompare(String(y.at || "")))[0].at) : "";
+    const f = latestFloor();
+    if (f) { const c = C.chipFor(f.v); $("sFloor").textContent = c.st + (c.name ? " · " + c.name : ""); $("sFloorAge").textContent = c.n + "/6 · " + clockOf(f.at) + " ET · " + ago(f.at); }
+    else { $("sFloor").textContent = "never logged"; $("sFloorAge").textContent = ""; }
+    $("briefLine").hidden = !S.brief;
+    if (S.brief) $("sBrief").textContent = S.brief.text;
+    renderLanes();
+
+    const ql = $("queue");
+    ql.innerHTML = "";
+    q.slice(0, 12).forEach((i) => {
+      const row = document.createElement("div");
+      row.className = "item";
+      row.innerHTML = '<div class="t">' + esc(i.text) + "</div>";
+      const mini = document.createElement("div");
+      mini.className = "mini";
+      const mk = (label, title, cls, fn) => { const b = document.createElement("button"); b.className = "chipbtn" + (cls ? " " + cls : ""); b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.onclick = fn; return b; };
+      mini.append(
+        mk("✕", "Drop it", "", () => finish(i, "dropped")),
+        mk("▤", "Break it down", splitPick === i.id ? "acc" : "", () => { splitPick = i.id; go("stuck"); }),
+        mk("▶", "Start", "acc", () => start(i)));
+      const s = document.createElement("div");
+      s.className = "s" + (i.from === "stack" ? " acc" : "");
+      s.innerHTML = (i.from === "stack" ? "stack" : "landed") + "<br>" + esc(clockOf(i.at));
+      row.append(mini, s);
+      ql.append(row);
+    });
+    if (q.length > 12) { const m = document.createElement("div"); m.className = "item"; m.innerHTML = '<div class="t muted">…and ' + (q.length - 12) + " more, oldest first</div>"; ql.append(m); }
+    $("queueCard").hidden = !q.length;
+  }
+
+  function renderLanes() {
+    const row = $("laneRow"), day = C.et().day, log = ls.json(K.lanes, {}), td = log[day] || {}, wd = C.dow(day);
+    row.innerHTML = "";
+    C.LANES.forEach((l) => {
+      const b = document.createElement("button");
+      const skipped = l.skip.indexOf(wd) >= 0, on = !!td[l.key], st = C.laneStreak(log, l.key, day);
+      b.className = "lane" + (on ? " on" : "") + (skipped && !on ? " skip" : "");
+      b.type = "button";
+      b.innerHTML = '<span class="l">' + esc(l.label) + '</span><span class="s">' + (skipped && !on ? "off" : st > 0 ? st + "d" : "—") + "</span>";
+      b.onclick = () => toggleLane(l.key);
+      row.append(b);
+    });
+    $("sLanesAge").textContent = Object.keys(td).length + " of 4 today";
+  }
+
+  function renderCards() {
+    const d = dark();
+    $("cardsDark").hidden = !d; $("deck").hidden = !!d;
+    if (d) $("cardsDark").innerHTML = d === "red" ? '<div class="big">Red floor</div>No asks tonight. The cards keep.' : '<div class="big">Dark until 06:00 ET</div>No asks tonight. The cards keep.';
+    const open = C.openCards(S, Date.now()), deck = $("deck");
+    deck.innerHTML = "";
+    if (open.length) {
+      const c = open[0], expired = C.cardExpired(c, Date.now());
+      const rec = c.recommend || c.rec || "";
+      const opts = Array.isArray(c.options) && c.options.length ? c.options.slice(0, 4).map(String) : ["Yes", "No"];
+      const kind = c.kind ? String(c.kind).replace(/_/g, " ").toLowerCase() : "card";
+      const src = c.source_file ? String(c.source_file).split(/[\\/]/).pop() : "";
+      deck.innerHTML = (open.length > 2 ? '<div class="c c3"></div>' : "") + (open.length > 1 ? '<div class="c c2"></div>' : "") +
+        '<div class="card first c c1"><div class="hd"><span class="tag acc">' + esc(expired ? "expired" : kind) + " · 1 of " + open.length + '</span><span class="stamp">waited <b>' + esc(ago(c.at)) + "</b></span></div>" +
+        "<h3>" + esc(c.text || c.q || "") + '</h3><div class="rec">' + (rec ? "Recommendation: <b>" + esc(rec) + "</b>" : "") + "</div>" +
+        '<div class="because">' + (c.because ? "needs you because: <b>" + esc(c.because) + "</b> · " : "") + (src ? "from <b>" + esc(src) + "</b> · " : "") + "card " + esc(c.id) + '</div><div class="ans" id="ans"></div></div>';
+      const ans = deck.querySelector("#ans");
+      if (expired) ans.append(btn("Dismiss — it expired", "ghost sm", () => { c.dismissed = true; commit(); }));
+      else {
+        opts.forEach((o) => ans.append(btn(o, rec && o === rec ? "primary" : "", () => answer(c, o))));
+        ans.append(btn("later", "ghost sm", () => { c.later = true; commit(); }));
+      }
+    } else {
+      deck.innerHTML = '<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">A seat files a card; this phone pulls it; your tap goes back through the door.</div></div>';
+    }
+    const dec = Object.values(S.cards).filter((c) => c.answered).sort((x, y) => String(y.answered.at || "").localeCompare(String(x.answered.at || ""))).slice(0, 8);
+    $("decidedCard").hidden = !dec.length;
+    $("decidedList").innerHTML = dec.map((c) => '<div class="park"><span>' + esc(c.text || c.id) + " → <b>" + esc(c.answered.choice) + '</b></span><span class="n">' + (c.answered.refused ? "not taken · " + esc(c.answered.refused) : (c.answered.sent ? "sent " : "waiting ") + esc(clockOf(c.answered.at))) + "</span></div>").join("");
+  }
+
+  function renderFloor() {
+    const box = $("vectors");
+    if (!box.dataset.built) {
+      box.innerHTML = C.VECTORS.map((k) => '<div class="vec"><span class="nm">' + k + '</span><div class="seg" data-k="' + k + '">' + [1, 2, 3, 4, 5].map((n) => '<span tabindex="0" role="button" data-n="' + n + '">' + n + "</span>").join("") + "</div></div>").join("") + '<div class="absent" id="absentNote"></div>';
+      box.dataset.built = "1";
+      box.querySelectorAll(".seg span").forEach((s) => {
+        const f = () => { const k = s.parentNode.dataset.k, n = +s.dataset.n; draft[k] = draft[k] === n ? null : n; renderFloor(); };
+        s.onclick = f;
+        s.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f(); } };
+      });
+    }
+    box.querySelectorAll(".seg").forEach((seg) => { const k = seg.dataset.k; seg.querySelectorAll("span").forEach((s) => { s.classList.toggle("on", draft[k] === +s.dataset.n); s.classList.toggle("set", typeof draft[k] === "number"); }); });
+    const absent = C.VECTORS.filter((k) => typeof draft[k] !== "number");
+    $("absentNote").textContent = absent.length ? absent.join(", ") + " untouched — logs as ABSENT, never 0" : "all six set";
+    const c = C.chipFor(draft), chip = $("chip");
+    chip.textContent = c.st;
+    chip.className = "st " + (c.st === "C" || c.st === "!" ? "bad" : c.st === "A" || c.st === "B" || c.st === "D" ? "warn" : c.st === "E" || c.st === "F" ? "" : "off");
+    $("chipLine").textContent = (c.name ? c.name + ". " : "") + c.line;
+    const f = latestFloor();
+    $("floorLast").innerHTML = "last logged <b>" + (f ? esc(clockOf(f.at)) + " ET · " + esc(ago(f.at)) : "never") + "</b>";
+    $("sameFloor").disabled = !f;
+    const hist = Object.values(S.floor).sort((x, y) => String(y.at).localeCompare(String(x.at))).slice(0, 5);
+    $("floorHist").innerHTML = hist.length ? hist.map((r) => {
+      const out = pending().some((e) => e.id === r.id);
+      return '<div class="park"><span class="n">' + C.VECTORS.map((k) => (typeof r.v[k] === "number" ? r.v[k] : "·")).join(" ") + '</span><span class="n">' + esc(C.et(new Date(r.at)).day.slice(5)) + " " + esc(clockOf(r.at)) + (out ? " · waiting" : "") + "</span></div>";
+    }).join("") : '<div class="park"><span class="muted">none yet</span></div>';
+  }
+
+  let splitPick = null;
+  function renderStuck() {
+    const a = active();
+    $("stuckOn").textContent = "on: " + (a ? a.text.slice(0, 32) : "nothing started");
+    const pick = splitPick && S.starts[splitPick];
+    $("splitBox").hidden = $("splitGo").hidden = $("splitCancel").hidden = !pick;
+    $("splitOut").textContent = pick ? "Breaking down: " + pick.text : "Tap ▤ on anything waiting, then write its steps here — one per line, each one small enough to start in a minute. Each becomes its own start; the big one steps aside.";
+    $("splitOut").classList.toggle("muted", !pick);
+    renderDoor();
+    const acts = $("storeActs");
+    acts.innerHTML = "";
+    acts.append(btn("Export", "sm", exportGo), btn("Import a file", "sm", () => $("impFile").click()));
+  }
+
+  /* The two boxes hold what you are typing until you press Save — a redraw never writes over
+     them (the 0.9.x Save trap). The saved key is never put back into its box; an empty key
+     box on Save keeps the key already saved. */
+  const dirty = { url: false, key: false };
+  $("doorUrlBox").addEventListener("input", () => { dirty.url = true; });
+  $("doorKeyBox").addEventListener("input", () => { dirty.key = true; });
+  function renderDoor() {
+    const ubox = $("doorUrlBox"), kbox = $("doorKeyBox");
+    if (!dirty.url) ubox.value = doorUrl();
+    if (!dirty.key) kbox.value = "";
+    kbox.placeholder = doorKey() ? "Door key — saved on this phone" : "Door key";
+    $("doorOut").textContent = keyed()
+      ? "Saved on this phone. Everything out — dumps, answers" + (S.sync.ops.length ? ", " + S.sync.ops.join(", ") : "") + " — and everything in — the cards waiting on you" + (S.sync.ops.length ? ", starts, the brief" : "") + " — goes through this one door."
+      : "This public app ships with no door URL and no door key. Enter both once on this phone; they stay here. The key travels in the request body, never in a URL.";
+    $("doorOut").classList.toggle("muted", !keyed());
+    const acts = $("doorActs");
+    acts.innerHTML = "";
+    acts.append(btn(keyed() ? "Save" : "Save door", keyed() ? "sm" : "primary", saveDoor));
+    if (doorUrl()) acts.append(btn("Test door", "sm", testDoor));
+    if (keyed()) acts.append(btn("Sync now", "sm primary", syncNow));
+    if (deadOut().length) acts.append(btn("Retry " + deadOut().length + " refused", "sm", () => { deadOut().forEach((e) => { delete e.dead; }); commit(); scheduleFlush(0); }));
+    if (doorUrl() || doorKey()) acts.append(btn("Clear", "sm ghost", () => { ls.set(K.url, null); ls.set(K.key, null); dirty.url = dirty.key = false; commit(); }));
+    const err = S.sync.err_out || S.sync.err_in;
+    $("doorStamps").innerHTML = "out <b>" + (S.sync.pushed_at ? esc(clockOf(S.sync.pushed_at)) + " ET" : "never") + "</b> · in <b>" + (S.sync.pulled_at ? esc(clockOf(S.sync.pulled_at)) + " ET" : "never") + "</b> · waiting <b>" + pending().length + "</b>" +
+      (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b>" : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
+      (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + (err ? " · last error <b>" + esc(err) + "</b>" : "");
+  }
+  function saveDoor() {
+    const u = $("doorUrlBox").value.trim(), k = $("doorKeyBox").value.trim();
+    const bad = u && C.doorUrlProblem(u);
+    if (bad) { toast("That door URL is " + bad + ". Nothing saved."); return; }
+    ls.set(K.url, u || null);
+    if (k) ls.set(K.key, k);
+    dirty.url = dirty.key = false;
+    S.sync.err_out = S.sync.err_in = null;
+    if (!keyed()) { toast(noDoorWhy() + " — still needed."); commit(); return; }
+    commit();
+    syncNow();
+  }
+  /* The door answers a GET with no key by naming itself. Proves the URL, touches nothing. */
+  async function testDoor() {
+    const url = doorUrl();
+    if (!url) return;
+    toast("Knocking…");
+    let text = "";
+    try { const r = await fetch(url, { method: "GET", cache: "no-store" }); text = (await r.text()).trim(); }
+    catch (e) { toast(failName(navigator.onLine === false ? "offline" : "network")); return; }
+    toast(/^walker-door/.test(text) ? "The door answers: " + text.slice(0, 40) + (doorKey() ? " — Sync now proves the key." : " — now the key.") : "Door URL is wrong — something answered, but not the door.");
+  }
+  async function syncNow() {
+    toast("Syncing…");
+    await sync();
+    const err = S.sync.err_out || S.sync.err_in;
+    toast(err ? failName(err) + "." : "Synced — " + (pending().length ? pending().length + " still waiting out, " : "all out, ") + C.openCards(S, Date.now()).length + " card" + (C.openCards(S, Date.now()).length === 1 ? "" : "s") + " in.");
+  }
+
+  function renderHeld() {
+    const q = pending().length;
+    $("heldRow").hidden = !q;
+    $("heldRow").textContent = q ? q + " waiting to go out · " + (C.isNight() ? "held until 06:00 ET" : keyed() ? "tries on the next sync" : "no door yet") : "";
+  }
+
+  function render() {
+    renderLamps(); renderHeld();
+    if (route === "now") renderNow();
+    else if (route === "cards") renderCards();
+    else if (route === "floor") renderFloor();
+    else if (route === "stuck") renderStuck();
+    if (route !== "now") $("phone").classList.toggle("dark", !!dark());
+    requestAnimationFrame(fades);
+  }
+  function fades() {
+    [["firstCard", 0], ["queue", 1]].forEach(([id, keep]) => {
+      const el = $(id);
+      if (!el) return;
+      const over = el.scrollHeight - el.clientHeight > 2;
+      el.classList.toggle("more", over);
+      if (!keep && !over) el.scrollTop = 0;
+    });
+  }
+
+  /* ---------- your data: export / import ---------- */
+  const EXPORT_SCHEMA = "joeos.now.export/v2";
+  function exportGo() {
+    try {
+      const bundle = { schema: EXPORT_SCHEMA, build: BUILD, at: nowIso(), store: S, lanes: ls.json(K.lanes, {}) };
+      const name = "now_store_" + nowIso().replace(/[-:]/g, "").slice(0, 15) + ".json";
+      const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 1)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast("Exported to " + name);
+    } catch (e) { toast("Could not write the file here."); }
+  }
+  function importBundle(text) {
+    let b;
+    try { b = JSON.parse(text); } catch (e) { toast("That file is not readable JSON."); return; }
+    let inc = null;
+    if (b && b.schema === EXPORT_SCHEMA && b.store) inc = C.normalize(b.store);
+    else if (b && b.schema === "joeos.now.export/v1" && b.store) inc = C.migrate(b.store, b.held, null);
+    if (!inc) { toast("That is not a NOW export file."); return; }
+    const stampOf = (r) => Date.parse((r && (r.answered && r.answered.at || r.at || r.started_at)) || 0) || 0;
+    let added = 0, merged = 0;
+    for (const k of ["starts", "cards", "floor", "receipts", "counters", "gone"]) {
+      for (const id in inc[k]) {
+        if (!S[k][id]) { S[k][id] = inc[k][id]; added++; }
+        else if (stampOf(inc[k][id]) > stampOf(S[k][id])) { S[k][id] = inc[k][id]; merged++; }
+      }
+    }
+    for (const e of inc.outbox) if (!S.outbox.some((x) => x.id === e.id)) { S.outbox.push(e); added++; }
+    const lanes = b.lanes;
+    if (lanes && typeof lanes === "object") { const log = ls.json(K.lanes, {}); for (const d in lanes) log[d] = Object.assign({}, log[d] || {}, lanes[d]); ls.set(K.lanes, JSON.stringify(log)); }
+    commit();
+    toast("Imported — " + added + " new, " + merged + " updated.");
+    scheduleFlush(0);
+  }
+
+  /* ---------- toast / undo ---------- */
+  let toastT = null, undoFn = null;
+  function toast(text, undo) {
+    $("toastText").textContent = text;
+    undoFn = undo || null;
+    let left = 3;
+    $("toastUndo").textContent = "UNDO · 3";
+    $("toastUndo").hidden = !undo;
+    $("toast").hidden = false;
+    clearInterval(toastT);
+    toastT = setInterval(() => { left--; if (left <= 0) { clearInterval(toastT); $("toast").hidden = true; undoFn = null; } else $("toastUndo").textContent = "UNDO · " + left; }, 1000);
+  }
+  $("toastUndo").onclick = () => { if (undoFn) undoFn(); clearInterval(toastT); $("toast").hidden = true; undoFn = null; };
+  $("briefLine").onclick = () => { if (S.brief) toast(S.brief.text + " · pulled " + ago(S.brief.at) + " ago"); };
+  ["lampOut", "lampIn", "lampCut"].forEach((id) => { $(id).onclick = () => toast($(id).dataset.msg || id); });
+
+  /* ---------- routes ---------- */
+  let route = "now";
+  function go(r) {
+    route = r;
+    document.querySelectorAll(".route").forEach((s) => s.classList.toggle("on", s.id === "r-" + r));
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.r === r));
+    ls.set(K.route, r);
+    render();
+  }
+  document.querySelectorAll(".tab").forEach((t) => { t.onclick = () => go(t.dataset.r); });
+
+  /* ---------- wiring ---------- */
+  (function () {
+    const b = $("dumpGo");
+    let t = null, held = false, down = false;
+    const arm = () => { held = true; b.classList.add("hold"); b.textContent = "START"; if (navigator.vibrate) navigator.vibrate(12); };
+    const reset = () => { clearTimeout(t); t = null; down = false; held = false; b.classList.remove("hold"); b.textContent = "DUMP"; };
+    b.oncontextmenu = (e) => { e.preventDefault(); return false; };
+    b.onpointerdown = (e) => { if (e.button) return; down = true; held = false; clearTimeout(t); t = setTimeout(arm, 550); };
+    b.onpointerup = () => { if (!down) return; const h = held; reset(); if (h) startGo(); else dumpGo(); };
+    b.onpointercancel = reset;
+    b.onpointerleave = () => { if (down && !held) reset(); };
+    b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dumpGo(); } };
+  })();
+  $("dumpBox").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); dumpGo(); } });
+  $("dumpBox").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; });
+  $("tPlus").onclick = () => { const a = active(); if (!a) return; const base = paused ? Date.now() + pausedLeft : Math.max(Date.now(), Date.parse(a.timer_end || 0)); paused = false; $("tPause").textContent = "pause"; a.timer_end = new Date(base + 5 * 60e3).toISOString(); commit(); };
+  $("tPause").onclick = () => { const a = active(); if (!a) return; if (!paused) { pausedLeft = Date.parse(a.timer_end || 0) - Date.now(); paused = true; $("tPause").textContent = "resume"; } else { paused = false; $("tPause").textContent = "pause"; a.timer_end = new Date(Date.now() + pausedLeft).toISOString(); commit(); } };
+  $("logFloor").onclick = logFloor;
+  $("sameFloor").onclick = () => { const f = latestFloor(); if (!f) return; C.VECTORS.forEach((k) => { draft[k] = typeof f.v[k] === "number" ? f.v[k] : null; }); renderFloor(); };
+  $("splitGo").onclick = () => {
+    const pick = splitPick && S.starts[splitPick];
+    if (!pick) return;
+    const steps = $("splitBox").value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8);
+    if (!steps.length) { toast("Write at least one step."); return; }
+    steps.forEach((s) => land(s, { parent: pick.id }));
+    pick.state = "split";
+    $("splitBox").value = ""; splitPick = null;
+    commit();
+    toast("Landed " + steps.length + " steps; the big one stepped aside.");
+    go("now");
+  };
+  $("splitCancel").onclick = () => { splitPick = null; $("splitBox").value = ""; render(); };
+  $("impFile").addEventListener("change", () => {
+    const f = $("impFile").files && $("impFile").files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => { importBundle(String(fr.result)); $("impFile").value = ""; };
+    fr.onerror = () => toast("Could not read that file.");
+    fr.readAsText(f);
+  });
+
+  /* When to talk to the stack: at launch, whenever the phone comes back to the app, when the
+     network comes back, every five minutes while it is open, and when a push says so. */
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { render(); sync(); } });
+  window.addEventListener("online", () => sync());
+  setInterval(() => { if (document.visibilityState === "visible") sync(); }, 5 * 60 * 1000);
+  setInterval(tickTimer, 500);
+  let lastDark = dark(), lastMinute = -1;
+  setInterval(() => { const d = dark(), m = new Date().getMinutes(); if (d !== lastDark || m !== lastMinute) { if (lastDark === "night" && !d) sync(); lastDark = d; lastMinute = m; render(); } }, 15000);
+  window.addEventListener("resize", () => requestAnimationFrame(fades));
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e && e.data && e.data.type === "pull") { if (e.data.route) go(e.data.route); sync(); } });
+  }
+
+  /* ---------- boot ---------- */
+  for (const id in S.cards) S.cards[id].later = false;      // "later" means until the next launch
+  save();
+  $("verNum").textContent = BUILD;
+  const routes = ["now", "cards", "floor", "stuck"], asked = location.hash.slice(1);
+  go(routes.indexOf(asked) >= 0 ? asked : routes.indexOf(ls.get(K.route)) >= 0 ? ls.get(K.route) : "now");
+  sync();
+})();
+</script>
 </body>
 </html>
