@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-StzR6zWTjqK+LMsYJ3B4Oqm/XGtO7OEZWkPP6Gx8594=' 'sha256-Wx2lr7AyqKHWsXls3uJztx/Ku9IQlVxYDiD4qRRGGtw='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ifRIq6K1amEF7vMpDlWz1KCJK/n0Y6NYWBfCF+X7Ruc=' 'sha256-oEYL7X9UlheMTFJkGJc4SjJBMDH/P0qeudZyAopPv7I='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.0</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.1</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -464,6 +464,16 @@ const CORE = (function () {
     if (/unknown_op|unsupported|bad_op|not_implemented/i.test(code)) return "refused";
     return "retry";
   }
+  /* A reply that is not the door's JSON is a web page from whatever answered — at a working door,
+     Google's own error page (the door's code answers JSON or nothing). A few plain words of it are
+     kept so the phone can say what came back: never a link, a host name or anything token-shaped. */
+  function errorHint(raw, status) {
+    const words = String(raw || "").slice(0, 20000)
+      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]*>/g, " ").replace(/&[a-z#0-9]+;/gi, " ")
+      .replace(/https?:\/\/\S+/gi, " ").replace(/\b[\w-]+(\.[\w-]+)+(\/\S*)?/g, " ").replace(/[A-Za-z0-9_-]{16,}/g, " ")
+      .replace(/[^A-Za-z0-9 .,:;!?'()-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    return (status ? "HTTP " + status + (words ? ": " : "") : "") + words;
+  }
   /* Door URLs are https (a local test door is the one exception); the key never rides in one. */
   function doorUrlProblem(u) {
     let x;
@@ -582,6 +592,7 @@ const CORE = (function () {
     if (j.stamp != null) s.sync.stamp = String(j.stamp);
     s.sync.pulled_at = nowIso;
     s.sync.err_in = null;
+    if (!s.sync.err_out) s.sync.err_hint = null;
     return s;
   }
   function cardExpired(c, nowMs) {
@@ -597,7 +608,7 @@ const CORE = (function () {
 
   return { TZ, et, isNight, minutesToCutoff, walkerDay, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
     FLOOR_FRESH_MS, floorFresh, PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, DOOR_MAX_BODY, bodyBytes, dumpWireBytes, LIVE_OPS, canSend,
-    wire, pullBody, classify, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope };
+    wire, pullBody, classify, errorHint, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope };
 })();
 </script>
 
@@ -605,7 +616,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.0";
+  const BUILD = "1.1.1";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -670,10 +681,22 @@ const CORE = (function () {
     // live door, a body over 32 KB or unreadable JSON — which this phone never sends).
     if (!raw) throw { code: "unauthorized" };
     let j;
-    try { j = JSON.parse(raw); } catch (e) { throw { code: "bad_response" }; }
+    try { j = JSON.parse(raw); } catch (e) { throw { code: "bad_response", hint: C.errorHint(raw, res.status) }; }
     // The door answers {ok:false, code:<http-ish number>, error:<word>}; the word is the reason.
     if (!j || !j.ok) throw { code: String((j && (j.error || j.code)) || "http_" + res.status) };
     return j;
+  }
+
+  /* Has this door answered properly in the last hour? Saving another URL starts it from never. */
+  const doorWorked = () => [S.sync.pulled_at, S.sync.pushed_at].some((t) => t && Date.now() - Date.parse(t) < 3600e3);
+  /* A hiccup is tried again in 20 s, once, rather than waiting five minutes for the next sync. */
+  let retryT = null;
+  function failed(side, e) {
+    const code = (e && e.code) || "?";
+    S.sync["err_" + side] = code;
+    S.sync.err_hint = code === "bad_response" ? e.hint || null : S.sync.err_hint;
+    if (code === "bad_response" && doorWorked() && !retryT) retryT = setTimeout(() => { retryT = null; sync(); }, 20000);
+    return code;
   }
 
   /* OUT — the outbox. Everything the phone sends the stack waits here until the door says ok.
@@ -733,9 +756,8 @@ const CORE = (function () {
             try { acked(env, await post(body)); } finally { inFlight.delete(env.id); }
             commit();          // each one is saved and shown the moment the door takes it — a long queue counts down, and a killed app does not resend what already went
           } catch (e) {
-            const code = (e && e.code) || "?";
+            const code = failed("out", e);
             const verdict = C.classify(code);
-            S.sync.err_out = code;
             if (verdict === "stop") { stopped = true; break; }
             if (verdict === "refused") { S.sync.ops = S.sync.ops.filter((o) => o !== env.op); continue; }
             if (verdict === "final") { refusedFinal(env, code); continue; }
@@ -763,6 +785,7 @@ const CORE = (function () {
     S.outbox = S.outbox.filter((e) => e.id !== env.id);
     S.sync.pushed_at = nowIso();
     S.sync.err_out = null;
+    if (!S.sync.err_in) S.sync.err_hint = null;
     if (env.op === "dump") {
       const mine = bytesOf(String(env.body.text || ""));
       const id = String(j.receipt_id || env.id);
@@ -790,7 +813,7 @@ const CORE = (function () {
         C.mergePull(S, await post(C.pullBody(doorKey(), f, at)), nowIso(), band);
         S.sync.band = band.state;          // the IN lamp says so when the door is holding cards for the floor
         if (S.sync.ops.join() !== before && pending().length) scheduleFlush(0);   // the door just learned an op: send what was parked for it
-      } catch (e) { S.sync.err_in = (e && e.code) || "?"; }
+      } catch (e) { failed("in", e); }
     })().finally(() => { pulling = null; commit(); });
     return pulling;
   }
@@ -976,7 +999,7 @@ const CORE = (function () {
     write_failed: "The door could not write",
     no_door: "No door on this phone",
   };
-  const failName = (code) => FAIL[code] || "Door said " + code;
+  const failName = (code) => (code === "bad_response" && doorWorked() ? "Google sent an error page instead of the door's answer — a hiccup on its side; trying again" : FAIL[code] || "Door said " + code);
   function outWhy() {
     if (!keyed()) return noDoorWhy();
     if (C.isNight()) return "Dark until 06:00 ET";
@@ -988,7 +1011,7 @@ const CORE = (function () {
     const tail = parked ? " " + parked + " floor/done/lane record" + (parked > 1 ? "s" : "") + " parked here until the door takes them." : "";
     if (!keyed()) lamp("lampOut", "bad", noDoorWhy() + (q ? " — " + q + " waiting here" : "") + ". STUCK → The door.");
     else if (n) lamp("lampOut", "warn", "Dark until 06:00 ET — the door is shut by the rule." + (q ? " " + q + " held; they go after six." : ""));
-    else if (e === "unauthorized" || e === "bad_response") lamp("lampOut", "bad", failName(e) + (q ? " — " + q + " held here" : "") + ". STUCK → The door.");
+    else if (e === "unauthorized" || (e === "bad_response" && !doorWorked())) lamp("lampOut", "bad", failName(e) + (q ? " — " + q + " held here" : "") + ". STUCK → The door.");
     else if (dead) lamp("lampOut", "bad", dead + " the door refused — kept on this phone. STUCK → The door: retry it, change it or let it go.");
     else if (q) lamp("lampOut", "warn", q + " waiting to go out — " + outWhy() + ". Next try on the next sync.");
     else lamp("lampOut", "ok", "Everything the door takes is out." + (S.sync.pushed_at ? " Last sent " + clockOf(S.sync.pushed_at) + " ET." : "") + tail);
@@ -996,10 +1019,11 @@ const CORE = (function () {
     const p = S.sync.pulled_at, age = p ? Date.now() - Date.parse(p) : Infinity, open = C.openCards(S, Date.now()).length;
     if (!keyed()) lamp("lampIn", "bad", "Nothing comes in without a door. STUCK → The door.");
     else if (n) lamp("lampIn", "warn", "Dark until 06:00 ET — no pull, no ask." + (p ? " Last pull " + clockOf(p) + " ET." : ""));
-    else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || S.sync.err_in === "bad_response")) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
+    else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || (S.sync.err_in === "bad_response" && !doorWorked()))) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
     else if (!p) lamp("lampIn", "warn", "Never pulled yet.");
     else if (age > 60 * 60e3) lamp("lampIn", "warn", "Last pull " + clockOf(p) + " ET, " + ago(p) + " ago — cards may be stale.");
     else lamp("lampIn", "ok", "Pulled " + clockOf(p) + " ET — " + (open ? open + " card" + (open > 1 ? "s" : "") + " waiting on you." : "nothing waiting on you.") +
+      (S.sync.err_in ? " The last try failed — " + failName(S.sync.err_in) + "." : "") +
       (S.sync.band === "thin" || S.sync.band === "fail" ? " The floor reads " + S.sync.band + ", so the door holds new cards until a full, steady reading." : ""));
 
     const left = C.minutesToCutoff();
@@ -1216,7 +1240,7 @@ const CORE = (function () {
     const err = S.sync.err_out || S.sync.err_in;
     $("doorStamps").innerHTML = "out <b>" + (S.sync.pushed_at ? esc(clockOf(S.sync.pushed_at)) + " ET" : "never") + "</b> · in <b>" + (S.sync.pulled_at ? esc(clockOf(S.sync.pulled_at)) + " ET" : "never") + "</b> · waiting <b>" + pending().length + "</b>" +
       (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b>" : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
-      (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + (err ? " · last error <b>" + esc(err) + "</b>" : "");
+      (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + (err ? " · last error <b>" + esc(err) + "</b>" + (err === "bad_response" && S.sync.err_hint ? " (" + esc(S.sync.err_hint) + ")" : "") : "");
   }
   /* What the door refused stays on this phone, in sight: each one with the door's word for why.
      A dump can go back into the box to be shortened or split, or be let go (with UNDO). */
@@ -1282,11 +1306,11 @@ const CORE = (function () {
     const u = $("doorUrlBox").value.trim(), k = $("doorKeyBox").value.trim();
     const bad = u && C.doorUrlProblem(u);
     if (bad) { toast("That door URL is " + bad + ". Nothing saved."); return; }
-    if (u !== doorUrl()) { S.sync.ops = []; S.sync.door = null; S.sync.band = null; }   // another door: it has listed nothing yet
+    if (u !== doorUrl()) Object.assign(S.sync, { ops: [], door: null, band: null, pulled_at: null, pushed_at: null, err_hint: null });   // another door: it has listed nothing and answered nothing yet
     ls.set(K.url, u || null);
     if (k) ls.set(K.key, k);
     dirty.url = dirty.key = false;
-    S.sync.err_out = S.sync.err_in = null;
+    S.sync.err_out = S.sync.err_in = S.sync.err_hint = null;
     if (!keyed()) { toast(noDoorWhy() + " — still needed."); commit(); return; }
     commit();
     syncNow();

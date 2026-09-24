@@ -113,6 +113,13 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
     expired: "final", not_found: "final", choice_invalid: "final", schema_or_origin: "final", receipt_id_invalid: "final", payload_too_large: "final",
     unknown_op: "refused", weird: "retry", "400": "retry" };
   for (const [code, want] of Object.entries(verdicts)) check("WIRE", "classify " + code + " → " + want, CORE.classify(code) === want, CORE.classify(code));
+  // A web page where the door's JSON should be: a few plain words, never a link, host or token.
+  const page = '<!DOCTYPE html><html><head><title>Error</title><style>body{color:red}</style><script>var k="zzzzzzzzzzzzzzzzzzzz"</script></head>' +
+    '<body><div>Sorry, unable to open the file at this time.</div><p>See https://door.example.invalid/x/abcdefghijklmnopqrstu and door.example.invalid/y</p></body></html>';
+  const hint = CORE.errorHint(page, 200);
+  check("WIRE", "error page hint: the words, with the status", /^HTTP 200: Error Sorry, unable to open the file at this time\./.test(hint), hint);
+  check("WIRE", "error page hint: no link, host, token, script or markup", !/example|invalid|abcdefghij|zzzz|https|<|>|color/.test(hint), hint);
+  check("WIRE", "error page hint: at most 80 characters of words", CORE.errorHint("word ".repeat(100), 0).length <= 80 && CORE.errorHint("", 502) === "HTTP 502");
 
   check("WIRE", "door URL: https ok", CORE.doorUrlProblem("https://example.invalid/door/exec") === null);
   check("WIRE", "door URL: local test door ok", CORE.doorUrlProblem("http://127.0.0.1:9/exec") === null);
