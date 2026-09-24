@@ -5,7 +5,7 @@ A one-screen phone surface for one person. It does two jobs and nothing else:
 1. **Get things out of your head and into the stack** — a thought, an answer, a floor reading — instantly, with no signal, and never lose one.
 2. **Put what the stack needs from you in front of you** — one card at a time, one thing to do at a time — and nothing else, and nothing at all after 02:00 or on a red floor.
 
-Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.0.1` — if it doesn't, the page is cached and nothing else you are seeing can be trusted.
+Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.1.0` — if it doesn't, the page is cached and nothing else you are seeing can be trusted.
 
 ## The shape of it
 
@@ -29,13 +29,13 @@ The phone is a **terminal with a mailbox**, and there is **one door**.
 
 ## The five routes
 
-**NOW** — one card, one thing. FIRST picks it and says why. Start runs 25 minutes; Done closes it and counts it; Not today brings it back tomorrow. Beneath: the strips (out, done, cards, floor, lanes), and the waiting list. If the stack sent a line, it sits above the card.
+**NOW** — one card, one thing. FIRST picks it and says why. Start runs 25 minutes; Done closes it and counts it; Not today brings it back tomorrow (UNDO takes either back). Beneath: the strips (out, done, cards, floor, lanes), and the rest of the waiting list, each with its age. If the stack sent a line, it sits above the card. On a short phone the whole column scrolls; the card's own buttons are never hidden inside it.
 
 **CARDS** — decisions waiting on you, one at a time, with the recommendation as the primary button. A tap goes out after three seconds (UNDO takes it back). `later` hides a card until the next launch. An expired card can't be answered; you can let it go. *Decided* shows what your taps sent, and anything the door would not take, with the reason.
 
 **FLOOR** — six vectors, 1–5; tap what you know, skip what you don't. Untouched logs as ABSENT, never 0. The chip is computed on the phone; the reading is what is kept.
 
-**STUCK** — break a big thing into small steps (each becomes its own start), set up the door, and move your data between phones.
+**STUCK** — break a big thing into small steps (each becomes its own start; the last one closed closes the big one too), set up the door, and move your data between phones. Anything the door refused is listed here with the door's reason: retry it, put a dump back in the box to shorten or split it, or let it go.
 
 **DUMP** — always in reach. Tap: out and forgotten. Hold: START — kept here until Done, *and* sent out, under the same id.
 
@@ -45,7 +45,8 @@ The phone is a **terminal with a mailbox**, and there is **one door**.
 - **A red floor goes dark too.** A Redline reading in the last 12 hours blanks NOW and CARDS rather than ask anything of you.
 - **Status is a lamp, never a sentence.** `out` and `in` — tap either for the sentence.
 - **The dump text is not kept.** Once the door takes it, the phone keeps a receipt — id, time, byte count, the door's byte count — and drops the text. A start keeps its text only until Done.
-- **The door URL and key are never in this repo.** You type them once per phone (STUCK → The door); they live in that phone's storage. The key travels in the request body, never in a URL.
+- **The door URL and key are never in this repo.** You type them once per phone (STUCK → The door); they live in that phone's storage, and never in an export. The key travels in the request body, never in a URL.
+- **Only this page's own code runs.** A Content-Security-Policy pins the page's two scripts by hash and lets it talk only to itself and the door, so text from a card can never run as code.
 
 ## FIRST, and the floor matrix
 
@@ -66,20 +67,21 @@ One namespace, `now.*`, in this phone's `localStorage`:
 
 **Upgrading from 0.9.x** is automatic and loses nothing: the first 1.0 launch reads `now.walker.v0` and `now.walker.held`, turns held dumps and unsent answers into outbox envelopes *with their original ids*, and carries starts, cards, readings, receipts and counters across. The 0.9 keys are read and never written, so rolling back to 0.9.6 still finds them.
 
-**Export / Import** (STUCK → Your data) moves a phone's store as one JSON file. Import merges, newest record winning; it also reads 0.9 export files.
+**Export / Import** (STUCK → Your data) moves a phone's store as one JSON file. Import merges, newest record winning; a start finished on either phone never comes back; it also reads 0.9 export files.
 
 A service worker (`sw.js`) keeps the page openable with no signal. It only ever answers same-origin GETs, network first — it never touches the door.
 
 ## Tests
 
 ```
-node test.js          # no dependencies — 169 checks
-node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 25 scenarios
+node test.js          # no dependencies — 191 checks
+node test.js --pin-csp  # after editing either script: re-pin their hashes in the CSP
+node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 48 scenarios
 ```
 
-`test.js` lifts the `<script id="core">` block out of the shipped `index.html` and runs it: joeos-core's own contract vectors (**14 floor-matrix, 15 FIRST** — the same files that test `ops.py`), every wire shape against DOOR.md, the 0.9 migration, the pull-merge rules, the clock on both sides of DST, and the ship greps (no door URL, key, or deployment id anywhere public; every key in `now.*`; the build tag).
+`test.js` lifts the `<script id="core">` block out of the shipped `index.html` and runs it: joeos-core's own contract vectors (**14 floor-matrix, 15 FIRST** — the same files that test `ops.py`), every wire shape against DOOR.md, the 0.9 migration, the pull-merge rules, the clock on both sides of DST, and the ship greps (no door URL, key, or deployment id anywhere public; every key in `now.*`; the build tag; the CSP's hashes match the scripts).
 
-`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO; a card answered elsewhere; an answer refused; the dark window; a 0.9.6 phone upgrading; and the proposed door taking floor, done, lanes, starts and the brief. Screens land in `test/shots/` for a person to look at.
+`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO, including after the phone was away; a card answered elsewhere; an answer refused; a refused dump retried, re-boxed or let go; the dark window and a red floor; a 0.9.6 phone upgrading; export (never the door key) and import, including a 0.9 file; a finished start never coming back from an old export; a hostile card; opening with no signal; FIRST at real phone heights; and the proposed door taking floor, done, lanes, starts and the brief — and a rolled-back door getting none of them. Screens land in `test/shots/` for a person to look at.
 
 ## Layout
 

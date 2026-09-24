@@ -20,7 +20,7 @@ Everything outbound is an **envelope** in the phone's outbox, `{id, op, at, body
 
 ```json
 { "key": "…", "text": "call the plumber", "receipt_id": "<uuid>",
-  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.0.1" }
+  "schema": "lab.intake.raw/v1", "origin_surface": "walker", "surface_version": "1.1.0" }
 ```
 
 No `op` field: the door reads a body without one as a dump. `receipt_id` is the envelope id (a UUID). The door writes one `raw_<UTC stamp>_<receipt_id>.md` into the intake feeds with the RAW_SHAPE front matter, and answers:
@@ -33,7 +33,7 @@ The phone keeps a **receipt** — id, time, its own byte count, the door's byte 
 
 A START (hold DUMP) is a dump *and* a start: the start keeps the text on the phone until Done, under the **same id** as its dump, so the stack can match the two.
 
-Limits the phone enforces before sending: text ≤ 30,000 bytes (the door's cap is 32 KB for the whole body, and over it the door goes silent). The door takes 60 writes per rolling hour; `rate_limited` holds the rest for the next sync.
+Limits the phone enforces before sending. The door's cap is **32,768 bytes for the whole JSON body** (UTF-8), checked before it reads the key; over it the door answers an empty body, exactly like a wrong key. JSON escaping counts every line break, quote and backslash twice, so the phone measures the body it will send (`CORE.dumpWireBytes`), not the text: a dump that would not fit is refused at DUMP with the text left in the box, and an envelope already queued that would not fit is marked refused (`payload_too_large`) so it never stops the queue. The door takes 60 writes per rolling hour; `rate_limited` holds the rest for the next sync.
 
 ### `card_answer` — your tap on a card
 
@@ -41,7 +41,7 @@ Limits the phone enforces before sending: text ≤ 30,000 bytes (the door's cap 
 { "op": "card_answer", "key": "…", "id": "<card id>", "choice": "Yes", "at": "<ISO time of the tap>" }
 ```
 
-→ `{ "ok": true, "id": "…", "receipt_id": "…", "bytes": … }`, or `{ "ok": true, "id": "…", "already": true }` if it was answered before. Both mean done. The door files the answer as a raw record (`origin_surface: walker_decision`).
+→ `{ "ok": true, "id": "…", "receipt_id": "…", "bytes": … }`, or `{ "ok": true, "id": "…", "already": true }` if it was answered before. Both mean done. The door files the answer as a raw record (`origin_surface: walker_decision`). `already` does not say *which* answer the door kept — it may be another phone's, or this phone's own from a try whose reply was lost — so the phone shows that card as *the door already had an answer*, never as *sent*. (§5.6 proposes the door return the kept `choice`; a phone that gets one shows it.)
 
 The answer waits 3.5 s on the phone before it goes, so UNDO can take it back.
 
@@ -61,7 +61,7 @@ The answer waits 3.5 s on the phone before it goes, so UNDO can take it back.
                "recommend": "Yes", "ttl_h": 24, "source_file": "…" } ] }
 ```
 
-- `floor` is the phone's **band**, never the six numbers: `state` is `ok` (E or F, all six set), `thin` (A, B, D, or incomplete), `fail` (C or a tripwire), or `unknown` (never logged). The door **holds** cards back while the band is not ok — the stack does not ask a thin floor for decisions.
+- `floor` is the phone's **band**, never the six numbers: `state` is `ok` (E or F, all six set), `thin` (A, B, D, or incomplete), `fail` (C or a tripwire), or `unknown` (never logged, or the last reading is more than 12 hours old — the same freshness rule as the red-floor dark). The door holds a card **from the moment it is filed** if the last floor it saw was not ok, and an ok (or unknown) pull releases every held card; a card already delivered stays visible. The stack does not ask a thin floor for new decisions.
 - **`since` is always `"0"`.** The door filters `card.at > since` as a string compare. With a real cursor, a card held for a thin floor falls behind the cursor and is never delivered (door defect D1), and so does a card a seat stamped with a slow clock (D2). Asking from zero returns the whole open set — at most 50 cards — every time. The phone de-duplicates by id.
 - Because a pull with an ok (or unknown) band is the whole open set, a card the phone still shows that is **missing** from it was answered elsewhere or purged; the phone lets it go. After a thin pull it keeps everything.
 - `kind` is `SPEND`, `MAIL_OUT`, `IRREVERSIBLE` or `WORD`. `recommend`, when present, is one of `options` and is drawn as the primary button. A card past `at + ttl_h` is shown as expired and cannot be answered (the door would refuse it).
@@ -72,7 +72,7 @@ A seat files a card with `card_put` — a keyed call from the stack's side, neve
 
 ```json
 { "op": "card_put", "key": "…", "id": "…", "kind": "WORD", "text": "≤240 chars",
-  "options": ["≤4 options, ≤40 chars each"], "recommend": "one of options", "ttl_h": 24,
+  "options": ["up to 4 are kept, each cut to 40 chars"], "recommend": "one of options", "ttl_h": 24,
   "at": "…", "source_file": "…" }
 ```
 
@@ -91,13 +91,13 @@ Every error word lands in one of four buckets (`CORE.classify`):
 
 **The door does not know the clock.** 02:00–05:59 ET (America/Toronto, never a fixed UTC hour) the phone sends nothing and pulls nothing. DUMP still works: it holds on the phone, and goes after six (R-068).
 
-**Unknown ops are dumps at the live door.** So the phone sends only `dump` and `card_answer` — plus any op the door lists in `ops` on a pull (§5). Everything else waits on the phone, in order, capped at 300, and goes the day the door lists it.
+**Unknown ops are dumps at the live door.** A body with an op the door does not know goes down the dump path; without dump fields it is refused `schema_or_origin` and nothing is filed — but it is wasted, counts as a failure, and would be filed as raw the day it carried a `text`. So the phone sends only `dump` and `card_answer` — plus any op the door lists in `ops` on a pull (§5). Everything else waits on the phone, in order, capped at 300, and goes the day the door lists it.
 
 ## 5. Proposed — the phone is ready, the door is not
 
 Each of these is a door change for the door's own seat. None of them changes a live shape; a door that does none of them keeps working with this phone exactly as it does today.
 
-1. **Advertise.** Add `"ops": ["floor","done","lane"]` (whichever it takes) and `"door": "walker-door@4"` to the `cards` response. The phone starts sending those ops on the next sync.
+1. **Advertise.** Add `"ops": ["floor","done","lane"]` (whichever it takes) and `"door": "walker-door@4"` to the `cards` response. The phone starts sending those ops on the next sync. The list is read fresh on **every** pull: a pull without `ops` (a door rolled back, or a different door saved on the phone) means none, and those records park on the phone again instead of going down the old door's dump path.
 2. **`floor`** — each reading, so the ledger stops depending on a copy of the app that is not on the phone:
    `{ "op":"floor", "key", "event_id", "at", "origin_surface":"walker", "v": {"family":3,"energy":null,…} }`. Absent is `null`, never 0. The chip is not sent; the stack computes it from the reading.
 3. **`done`** — a start closed on the phone:
@@ -105,16 +105,17 @@ Each of these is a door change for the door's own seat. None of them changes a l
 4. **`lane`** — a lane tick: `{ "op":"lane", …, "day":"2026-09-24", "lane":"laundry", "on":true }`. Rapid toggles are coalesced on the phone; last one wins.
 5. **Starts and a brief, in the pull.** The `cards` response may carry
    `"starts": [ {"id":"…","text":"Call the vendor","at":"…","why":"…"} ]` — next physical actions the stack wants on the NOW list (they enter FIRST like anything you typed, marked *stack*, and their `done` goes back with `from: "stack"`) — and `"brief": "one line"`, shown as the STACK strip. A start you finished is never re-filed on the phone even if the door sends it again.
-6. **Door defects** noted 2026-09-21, which the phone now works around but the door should still fix: D1/D2 (`since` compare — the phone sends `"0"`), D3 (expired, unanswered cards are never purged, so the store fills to `cards_full`).
+6. **Say which answer was kept.** On `already: true`, also return the `choice` (and `at`) the door kept. The phone then shows *answered elsewhere · Yes* instead of the neutral *the door already had an answer*.
+7. **Door defects** the phone works around but the door must fix: D1/D2 (`since` compare — the phone sends `"0"`), D3 (expired, unanswered cards are never purged, so the store fills to `cards_full`). Found 2026-09-24 by running the @3 source under an Apps Script shim: **the card store deletes its own index (`cards_v1_meta`) every time it saves**, because the index shares the chunk prefix and the chunk cleanup removes every key that is not a chunk number — so a `card_put` answers ok and the card is gone before the next pull. A one-line fix (skip the index in that cleanup) is proposed to the door's seat; until it is deployed, no card can reach the phone. Also: a failed `raw_latest` pointer write fails a dump whose raw was already written (a retry writes a second raw), and answer receipts share the dump receipt namespace.
 
 ## 6. The other side of the door — what the stack must do for cards to reach the phone
 
 The phone pulls whatever is in the door. Today, **nothing files cards into the door**: the seat that turns stack questions into cards writes them somewhere the hosted phone cannot reach, and the pipe that carries decisions to the ledger reads from that same place. Until one of these lands, the CARDS tab can only ever show cards a person filed by hand:
 
 - **Cards in:** the card-filing seat calls `card_put` (§3) instead of writing elsewhere. A seat needs a key to do that — or the door reads a folder the seats already write to, and no seat ever holds the key. That choice is the operator's.
-- **Answers out:** the ledger pipe reads decisions from the door (a keyed read of answered cards — the door already keeps them 7 days) instead of from the other copy.
+- **Answers out:** the ledger pipe reads decisions from the door instead of from the other copy. The @3 door has no op for that: an answer is kept only as a raw decision record (`origin_surface: walker_decision`), and nothing tells a seat *which* choice was tapped. The proposed v4 writes each answer as a small file to a folder the pipe can read.
 - **Floor, done, lanes out:** §5.2–5.4.
 
 ## 7. Testing this contract
 
-`node test.js` checks every live shape above byte-for-byte against `CORE.wire` / `CORE.pullBody`, and that the key appears in no URL anywhere. `node test/e2e.mjs` drives the real page in headless Chromium against `test/mock-door.mjs`, which answers like the live door — including the 302 → echo, the empty body on a bad key, the `error` words, `unknown op → dump`, and the thin-floor hold — and, switched to `v2`, like the proposed one.
+`node test.js` checks every live shape above byte-for-byte against `CORE.wire` / `CORE.pullBody`, and that the key appears in no URL anywhere. `node test/e2e.mjs` drives the real page in headless Chromium against `test/mock-door.mjs`. The mock was checked on 2026-09-24 against the @3 source itself, run under an Apps Script shim: the 302 → echo, the empty body on a bad key or an oversize body, the `error` words and live codes, `unknown op → dump path`, the 60/hour limit, `card_put` validation, and the per-card thin-floor hold — and, switched to `v2`, it answers like the proposed door.
