@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
+     itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-StzR6zWTjqK+LMsYJ3B4Oqm/XGtO7OEZWkPP6Gx8594=' 'sha256-Wx2lr7AyqKHWsXls3uJztx/Ku9IQlVxYDiD4qRRGGtw='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -41,13 +44,12 @@ body{padding:0 16px}
 .screen{flex:1;padding:6px 14px 0;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden}
 .route{display:none;flex-direction:column;gap:12px;flex:1;min-height:0}
 .route.on{display:flex;overflow-y:auto;overscroll-behavior:contain}
-#r-now.on{overflow:hidden}
-#nowBody{flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
-#firstCard{flex:2 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;overflow-y:auto;overscroll-behavior:contain}
-#firstCard.more{justify-content:flex-start}
-#queueCard{flex:1 1 0;min-height:104px;display:flex;flex-direction:column;overflow:hidden}
-#queue{overflow-y:auto;min-height:0;overscroll-behavior:contain;padding-bottom:4px}
-.more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent)}
+/* FIRST is never squeezed: every card takes the height its words need and the column scrolls as
+   one, so Start/Done is always on the card and never hidden inside a box that scrolls on its own. */
+#nowBody{flex:1 0 auto;display:flex;flex-direction:column;gap:12px}
+#firstCard{flex:2 0 auto;display:flex;flex-direction:column;justify-content:center}
+#queueCard{flex:1 0 auto;display:flex;flex-direction:column}
+#queue{padding-bottom:4px}
 
 .tag{flex:0 0 auto;font-family:var(--mono);font-size:14px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase}
 .tag.acc{color:var(--acc)}
@@ -79,6 +81,7 @@ body{padding:0 16px}
 .stamp{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stamp b{color:var(--ink3);font-weight:600}
 .stamp.wrap{white-space:normal}
+#floorLast{text-align:right}
 
 .list{display:flex;flex-direction:column}
 .item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--edge)}
@@ -109,6 +112,8 @@ body{padding:0 16px}
 .park{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--edge);font-size:16px;color:var(--ink2)}
 .park:first-child{border-top:0}
 .park .n{flex:none}
+.park.dead{align-items:center}
+.park.dead>span:first-child{min-width:0;overflow-wrap:anywhere}
 
 .vec{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--edge)}
 .vec:first-child{border-top:0}
@@ -174,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.0.1</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.0</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -225,7 +230,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 
     <!-- FLOOR: six vectors, a reading, never a mean -->
     <section class="route" id="r-floor" aria-label="Floor">
-      <div class="row between"><span class="tag">Floor · tonight</span><span class="stamp" id="floorLast">last logged <b>never</b></span></div>
+      <div class="row between"><span class="tag">Floor · tonight</span><span class="stamp wrap" id="floorLast">last logged <b>never</b></span></div>
       <div class="card thin" id="vectors"></div>
       <div class="card">
         <div class="chipbox"><span class="st off" id="chip">·</span><span class="line" id="chipLine"></span></div>
@@ -256,6 +261,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
         <input class="field" id="doorUrlBox" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door URL">
         <input class="field" id="doorKeyBox" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Door key">
         <div class="row" id="doorActs"></div>
+        <div id="deadList" hidden></div>
         <div class="stamp wrap" id="doorStamps"></div>
       </div>
       <div class="card ask">
@@ -304,11 +310,16 @@ const CORE = (function () {
   function isNight(d) { const h = et(d).hour; return h >= 2 && h < 6; }
   /* The 02:00 cutoff is a lamp, not a clock — it exists only from 23:00. Minutes left, or null. */
   function minutesToCutoff(d) {
-    const p = et(d);
-    if (p.hour >= 23) return (26 - p.hour) * 60 - p.minute;
-    if (p.hour < 2) return (2 - p.hour) * 60 - p.minute;
+    d = d || new Date();
+    const h = et(d).hour;
+    if (!(h >= 23 || h < 2)) return null;
+    // Real minutes to the next 02:00, counted forward — the fall-back night has two 01:00 hours.
+    for (let m = 1; m <= 240; m++) if (isNight(new Date(d.getTime() + m * 60000))) return m;
     return null;
   }
+  /* The walker's day runs from the 02:00 cutoff, not from midnight (R-068): what you do at 00:30
+     still belongs to the day before. 02:00–05:59 is dark, so nothing can land there anyway. */
+  function walkerDay(d) { const p = et(d); return p.hour < 6 ? shiftDay(p.day, -1) : p.day; }
   function shiftDay(ymd, n) { const a = ymd.split("-").map(Number); const t = new Date(Date.UTC(a[0], a[1] - 1, a[2]) + n * 86400000); return t.toISOString().slice(0, 10); }
   function dow(ymd) { const a = ymd.split("-").map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])).getUTCDay(); }
 
@@ -335,10 +346,17 @@ const CORE = (function () {
     if (!isNum(v.energy) || !isNum(v.control) || !isNum(v.harmony) || !isNum(v.family) || !isNum(v.balance)) return out("—", "Incomplete check", "Some vectors weren't logged. Log a full check when you can.");
     return out("F", "Steady", "Normal momentum. One next action at a time.");
   }
+  /* A reading speaks for 12 hours. Past that it says nothing — to the red-floor dark and to the
+     door alike — so one old thin reading can never hold every card for days. */
+  const FLOOR_FRESH_MS = 12 * 3600e3;
+  function floorFresh(reading, nowMs) {
+    const t = reading && Date.parse(reading.at);
+    return !!(reading && isFinite(t) && (nowMs == null ? Date.now() : nowMs) - t < FLOOR_FRESH_MS);
+  }
   /* What the stack is told about the floor when the phone asks for cards — a band, never the numbers.
      The stack decides from it how much to ask of you. */
-  function floorBand(reading) {
-    if (!reading) return { state: "unknown" };
+  function floorBand(reading, nowMs) {
+    if (!reading || !floorFresh(reading, nowMs)) return { state: "unknown" };
     const c = chipFor(reading.v || {});
     let state = "ok";
     if (c.red || c.st === "C" || c.st === "!") state = "fail";
@@ -403,6 +421,18 @@ const CORE = (function () {
   const DUMP_SCHEMA = "lab.intake.raw/v1";
   const ORIGIN = "walker";
   const DUMP_MAX_BYTES = 30000;                 // the door refuses a body over 32 KB, silently
+  /* The door's 32 KB is the whole JSON body in UTF-8 bytes, measured before it reads the key; over
+     it, the door answers an empty body, which reads exactly like a wrong key. JSON escaping doubles
+     every line break, quote and backslash, so 25 KB of text can be 33 KB on the wire. Measure the
+     body, never just the text. */
+  const DOOR_MAX_BODY = 32768;
+  const utf8Bytes = (s) => new TextEncoder().encode(String(s)).length;
+  function bodyBytes(body) { return utf8Bytes(JSON.stringify(body)); }
+  /* The body a dump of this text would be, with the longest id and a key at least 64 long. */
+  function dumpWireBytes(text, key, build) {
+    const k = String(key || "");
+    return bodyBytes(wire({ id: "x".repeat(64), op: "dump", body: { text: text } }, k.length >= 64 ? k : k + "k".repeat(64 - k.length), build));
+  }
   /* The live door (walker-door @3) takes these. It treats any op it does not know as a dump,
      so nothing else is ever sent until the door lists it in `ops` on a pull. */
   const LIVE_OPS = ["dump", "card_answer"];
@@ -411,14 +441,14 @@ const CORE = (function () {
     const b = env.body || {};
     if (env.op === "dump") return { key: key, text: String(b.text || ""), receipt_id: env.id, schema: DUMP_SCHEMA, origin_surface: ORIGIN, surface_version: build };
     if (env.op === "card_answer") return { op: "card_answer", key: key, id: b.card_id, choice: b.choice, at: env.at };
-    return Object.assign({ op: env.op, key: key, event_id: env.id, at: env.at, origin_surface: ORIGIN }, b);
+    return Object.assign({}, b, { op: env.op, key: key, event_id: env.id, at: env.at, origin_surface: ORIGIN });   // the envelope's own fields always win over its body
   }
   /* The pull always asks from "0": the whole open set, every time. The door compares
      `card.at > since` as strings, so a cursor loses any card that was held for a thin floor
      (door defect D1) or stamped by a seat whose clock was behind (D2). Fifty cards at most;
      re-sending them is cheap, losing one is not. */
-  function pullBody(key, reading) {
-    return { op: "cards", key: key, since: "0", floor: JSON.stringify(floorBand(reading)) };
+  function pullBody(key, reading, nowMs) {
+    return { op: "cards", key: key, since: "0", floor: JSON.stringify(floorBand(reading, nowMs)) };
   }
   /* What a door error means for the envelope that got it.
      stop  — the door or the network is the problem; stop this round, keep everything.
@@ -444,9 +474,36 @@ const CORE = (function () {
     return null;
   }
 
+  /* ---------- what comes from outside (the door, an import file) is checked before it is kept ---------- */
+  const BAD_ID = /^(__proto__|constructor|prototype)$/;
+  const safeId = (x) => { const id = String(x == null ? "" : x); return id && id.length <= 128 && !BAD_ID.test(id) ? id : null; };
+  const isoOr = (x, dflt) => (x && isFinite(Date.parse(x)) ? String(x) : dflt);
+  const LANE_KEYS = ["school", "lunches", "laundry", "cooking"];
+  /* An envelope from an import file is rebuilt from known fields only. An answer is never imported —
+     a card is answered by a tap on a phone, not by a file — and a dump that already went is not resent. */
+  function cleanEnvelope(e, sentIds) {
+    if (!e || typeof e !== "object") return null;
+    const id = safeId(e.id), at = isoOr(e.at, null), b = e.body || {};
+    if (!id || !at) return null;
+    const base = { id: id, op: e.op, at: at, tries: 0 };
+    if (e.dead) base.dead = String(e.dead);
+    if (e.op === "dump") return typeof b.text === "string" && b.text.trim() && !(sentIds && sentIds[id]) ? Object.assign(base, { body: { text: b.text } }) : null;
+    if (e.op === "floor") {
+      const v = {};
+      for (const k of VECTORS) v[k] = isNum(b.v && b.v[k]) && b.v[k] >= 1 && b.v[k] <= 5 ? b.v[k] : null;
+      return Object.assign(base, { body: { v: v } });
+    }
+    if (e.op === "done") {
+      const ref = safeId(b.ref);
+      return ref ? Object.assign(base, { body: { ref: ref, from: b.from === "stack" ? "stack" : "phone", outcome: b.outcome === "dropped" ? "dropped" : "done", words: isNum(b.words) ? Math.max(0, Math.floor(b.words)) : 0 } }) : null;
+    }
+    if (e.op === "lane") return /^\d{4}-\d{2}-\d{2}$/.test(String(b.day)) && LANE_KEYS.indexOf(b.lane) >= 0 ? Object.assign(base, { body: { day: String(b.day), lane: b.lane, on: b.on === true } }) : null;
+    return null;
+  }
+
   /* ---------- the store on this phone ---------- */
   function emptyStore() {
-    return { v: 1, starts: {}, gone: {}, cards: {}, floor: {}, receipts: {}, counters: {}, outbox: [], brief: null,
+    return { v: 1, starts: {}, gone: {}, cards: {}, floor: {}, receipts: {}, counters: {}, outbox: [], brief: null, boxed: null,
       sync: { stamp: "0", pulled_at: null, pushed_at: null, err_in: null, err_out: null, ops: [], door: null } };
   }
   function normalize(s) {
@@ -455,6 +512,7 @@ const CORE = (function () {
     for (const k of Object.keys(e)) if (s[k] != null && typeof s[k] === typeof e[k] && Array.isArray(s[k]) === Array.isArray(e[k])) e[k] = s[k];
     e.sync = Object.assign(emptyStore().sync, s.sync || {});
     e.brief = s.brief && typeof s.brief === "object" ? s.brief : null;
+    e.boxed = s.boxed && typeof s.boxed.text === "string" && s.boxed.text ? { text: s.boxed.text, at: String(s.boxed.at || "") } : null;
     return e;
   }
   /* Carry a 0.9.x phone across: its store (now.walker.v0), its held dumps (now.walker.held)
@@ -503,21 +561,22 @@ const CORE = (function () {
     const cards = Array.isArray(j.cards) ? j.cards : [];
     const seen = {};
     for (const c of cards) {
-      if (!c || !c.id) continue;
-      const id = String(c.id);
+      const id = c && safeId(c.id);
+      if (!id) continue;
       seen[id] = true;
       const prev = s.cards[id] || {};
-      s.cards[id] = Object.assign({}, prev, c, { id: id, answered: prev.answered || null, later: !!prev.later, dismissed: !!prev.dismissed, seen_at: prev.seen_at || nowIso });
+      s.cards[id] = Object.assign({}, prev, c, { id: id, at: isoOr(c.at, prev.at || nowIso), answered: prev.answered || null, later: !!prev.later, dismissed: !!prev.dismissed, seen_at: prev.seen_at || nowIso });
     }
     const whole = !band || band.state === "ok" || band.state === "unknown";
     if (whole) for (const id in s.cards) if (!seen[id] && !s.cards[id].answered) delete s.cards[id];
-    if (Array.isArray(j.ops)) s.sync.ops = j.ops.map(String);
-    if (j.door != null) s.sync.door = String(j.door);
+    // Every pull says what this door takes today. A door rolled back, or a different door saved,
+    // lists fewer ops — or none — and what it no longer lists parks on the phone again.
+    s.sync.ops = Array.isArray(j.ops) ? j.ops.map(String) : [];
+    s.sync.door = j.door != null ? String(j.door) : null;
     if (Array.isArray(j.starts)) for (const x of j.starts) {
-      if (!x || !x.id || !x.text) continue;
-      const id = String(x.id);
-      if (s.starts[id] || s.gone[id]) continue;
-      s.starts[id] = { id: id, text: String(x.text), at: x.at || nowIso, state: "waiting", from: "stack", why: x.why || x.because || "" };
+      const id = x && x.text && safeId(x.id);
+      if (!id || s.starts[id] || s.gone[id]) continue;
+      s.starts[id] = { id: id, text: String(x.text), at: isoOr(x.at, nowIso), state: "waiting", from: "stack", why: String(x.why || x.because || "") };
     }
     if ("brief" in j) s.brief = j.brief ? { text: String(typeof j.brief === "object" ? j.brief.text || "" : j.brief), at: nowIso } : null;
     if (j.stamp != null) s.sync.stamp = String(j.stamp);
@@ -536,9 +595,9 @@ const CORE = (function () {
       .sort((a, b) => (cardExpired(a, nowMs) - cardExpired(b, nowMs)) || String(a.at || "").localeCompare(String(b.at || "")));
   }
 
-  return { TZ, et, isNight, minutesToCutoff, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
-    PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, LIVE_OPS, canSend,
-    wire, pullBody, classify, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards };
+  return { TZ, et, isNight, minutesToCutoff, walkerDay, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
+    FLOOR_FRESH_MS, floorFresh, PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, DOOR_MAX_BODY, bodyBytes, dumpWireBytes, LIVE_OPS, canSend,
+    wire, pullBody, classify, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope };
 })();
 </script>
 
@@ -546,13 +605,13 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.0.1";
+  const BUILD = "1.1.0";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10));
-  const ago = (iso) => { if (!iso) return ""; const s = (Date.now() - Date.parse(iso)) / 1e3; if (s < 60) return "now"; if (s < 3600) return Math.floor(s / 60) + " m"; if (s < 86400) return Math.floor(s / 3600) + " h"; return Math.floor(s / 86400) + " d"; };
-  const clockOf = (iso) => (iso ? C.et(new Date(iso)).clock : "");
+  const ago = (iso) => { if (!iso || !isFinite(Date.parse(iso))) return ""; const s = (Date.now() - Date.parse(iso)) / 1e3; if (s < 60) return "now"; if (s < 3600) return Math.floor(s / 60) + " m"; if (s < 86400) return Math.floor(s / 3600) + " h"; return Math.floor(s / 86400) + " d"; };
+  const clockOf = (iso) => (iso && isFinite(Date.parse(iso)) ? C.et(new Date(iso)).clock : "");
   const bytesOf = (s) => new TextEncoder().encode(s).length;
 
   /* ---------- this phone's memory: one namespace, `now.*` ---------- */
@@ -570,10 +629,22 @@ const CORE = (function () {
     return C.migrate(ls.json(K.v0, null), ls.json(K.held, []), ls.get(K.stamp));
   }
   let S = load();
+  let lastSaved = ls.get(K.store);
   function save() {
     const keys = Object.keys(S.receipts);
     if (keys.length > 400) keys.sort((a, b) => String(S.receipts[a].at).localeCompare(String(S.receipts[b].at))).slice(0, keys.length - 400).forEach((k) => delete S.receipts[k]);
-    ls.set(K.store, JSON.stringify(S));
+    const gone = Object.keys(S.gone);
+    if (gone.length > 600) gone.sort((a, b) => String(S.gone[a]).localeCompare(String(S.gone[b]))).slice(0, gone.length - 600).forEach((k) => delete S.gone[k]);
+    lastSaved = JSON.stringify(S);
+    ls.set(K.store, lastSaved);
+  }
+  /* Two copies open at once (a tab and the home-screen app, two tabs) each hold the whole store in
+     memory. When the other one has saved since this one last did, take its version before going on,
+     so this copy never writes an old picture over a dump or a start the other one made. */
+  function adoptStored() {
+    const raw = ls.get(K.store);
+    if (!raw || raw === lastSaved) return false;
+    try { S = C.normalize(JSON.parse(raw)); lastSaved = raw; return true; } catch (e) { return false; }
   }
   function commit() { save(); render(); }
 
@@ -581,7 +652,7 @@ const CORE = (function () {
   const doorUrl = () => (ls.get(K.url) || "").trim();
   const doorKey = () => (ls.get(K.key) || "").trim();
   const keyed = () => !!(doorUrl() && doorKey());
-  const floorRed = () => { const f = latestFloor(); return !!(f && Date.now() - Date.parse(f.at) < 12 * 3600e3 && C.chipFor(f.v).red); };
+  const floorRed = () => { const f = latestFloor(); return !!(f && C.floorFresh(f) && C.chipFor(f.v).red); };
   const dark = () => (C.isNight() ? "night" : floorRed() ? "red" : null);
 
   /* text/plain keeps the POST a CORS "simple request" — no preflight — so the browser follows
@@ -613,6 +684,13 @@ const CORE = (function () {
   const parkedOut = () => S.outbox.filter((e) => !sendable(e));
   const deadOut = () => S.outbox.filter((e) => e.dead);
   let flushing = null, flushingOnly = null, flushTimer = null;
+  const inFlight = new Set();     // envelope ids whose POST is in the air right now — UNDO can no longer stop them
+  /* UNDO takes an envelope back only while it is still on the phone and not already on its way. */
+  function takeBack(id) {
+    if (inFlight.has(id) || !S.outbox.some((e) => e.id === id)) return false;
+    S.outbox = S.outbox.filter((e) => e.id !== id);
+    return true;
+  }
   function enqueue(op, body, opts) {
     const env = { id: (opts && opts.id) || uid(), op: op, at: nowIso(), body: body, tries: 0 };
     if (opts && opts.holdMs) env.hold_until = Date.now() + opts.holdMs;
@@ -641,12 +719,18 @@ const CORE = (function () {
         const round = S.outbox.filter((e) => !tried.has(e.id) && (!only || only.indexOf(e.op) >= 0));
         if (!round.length) break;
         for (const env of round) {
+          if (C.isNight()) { stopped = true; break; }            // a flush already in the air at 02:00 stops sending too
           tried.add(env.id);
           if (!S.outbox.some((e) => e.id === env.id)) continue;           // undone meanwhile
           if (!sendable(env) || env.dead) continue;
           if (env.hold_until && env.hold_until > Date.now()) { later = Math.min(later || Infinity, env.hold_until); continue; }
           try {
-            acked(env, await post(C.wire(env, doorKey(), BUILD)));
+            const body = C.wire(env, doorKey(), BUILD);
+            // Over 32 KB the door answers an empty body — "wrong key" — and every envelope behind
+            // this one would wait forever. It is kept on the phone, marked, and the queue moves on.
+            if (C.bodyBytes(body) > C.DOOR_MAX_BODY) throw { code: "payload_too_large" };
+            inFlight.add(env.id);
+            try { acked(env, await post(body)); } finally { inFlight.delete(env.id); }
             commit();          // each one is saved and shown the moment the door takes it — a long queue counts down, and a killed app does not resend what already went
           } catch (e) {
             const code = (e && e.code) || "?";
@@ -684,7 +768,13 @@ const CORE = (function () {
       const id = String(j.receipt_id || env.id);
       S.receipts[id] = { id: id, at: nowIso(), bytes: mine, door_bytes: j.bytes == null ? null : j.bytes, readback: j.bytes == null ? "no count" : Number(j.bytes) === mine ? "ok" : "size mismatch" };
     }
-    if (env.op === "card_answer" && S.cards[env.body.card_id] && S.cards[env.body.card_id].answered) S.cards[env.body.card_id].answered.sent = true;
+    if (env.op === "card_answer" && S.cards[env.body.card_id] && S.cards[env.body.card_id].answered) {
+      const a = S.cards[env.body.card_id].answered;
+      a.sent = true;
+      // The door already had an answer — from another phone, or from this one when a reply was lost.
+      // The live door does not say which; a door that does is believed over this tap.
+      if (j.already) { a.already = true; if (j.choice && String(j.choice) !== a.choice) a.kept = String(j.choice); }
+    }
   }
 
   /* IN — the pull. The stack answers with the cards waiting on you, and may add
@@ -694,10 +784,11 @@ const CORE = (function () {
     if (pulling) return pulling;
     pulling = (async () => {
       if (!keyed() || C.isNight()) return;
-      const f = latestFloor();
+      const f = latestFloor(), at = Date.now(), band = C.floorBand(f, at);
       try {
         const before = S.sync.ops.join();
-        C.mergePull(S, await post(C.pullBody(doorKey(), f)), nowIso(), C.floorBand(f));
+        C.mergePull(S, await post(C.pullBody(doorKey(), f, at)), nowIso(), band);
+        S.sync.band = band.state;          // the IN lamp says so when the door is holding cards for the floor
         if (S.sync.ops.join() !== before && pending().length) scheduleFlush(0);   // the door just learned an op: send what was parked for it
       } catch (e) { S.sync.err_in = (e && e.code) || "?"; }
     })().finally(() => { pulling = null; commit(); });
@@ -706,15 +797,22 @@ const CORE = (function () {
   /* Answers go out before the pull, so the cards that come back already know. Dumps do not change
      what the stack asks, so the pull runs beside them — a long dump queue never holds up the cards. */
   async function sync() {
-    await flush(["card_answer"]);
-    await Promise.all([pull(), flush()]);
+    const f = flush(["card_answer"]);
+    // Only wait when this is our own answers-first flush. Joining a full flush already in the air
+    // (a DUMP on its way) would hold the cards behind the whole queue.
+    if (flushingOnly) await f;
+    await Promise.all([pull(), f.then(() => flush())]);
   }
 
   /* ---------- starts: the only prose kept on the phone, deleted at Done ---------- */
   const startsIn = (state) => Object.values(S.starts).filter((x) => x.state === state).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  /* Waiting: what you filed, what is back from Not today (a 0.9.x park has no day — it is back now),
+     and a broken-down start whose steps are all gone some other way than Done (a migrated one). */
   function waiting() {
-    const today = C.et().day;
-    return Object.values(S.starts).filter((x) => x.state === "waiting" || (x.state === "parked" && x.until && x.until <= today)).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+    const today = C.walkerDay(), parents = {};
+    Object.values(S.starts).forEach((x) => { if (x.parent) parents[x.parent] = true; });
+    return Object.values(S.starts).filter((x) => x.state === "waiting" || (x.state === "parked" && (!x.until || x.until <= today)) || (x.state === "split" && !parents[x.id]))
+      .sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
   }
   const active = () => startsIn("started")[0] || null;
   function latestFloor() { return Object.values(S.floor).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))[0] || null; }
@@ -729,31 +827,54 @@ const CORE = (function () {
   }
   function start(o) {
     const cur = active();
-    if (cur && cur.id !== o.id) Object.assign(cur, { state: "waiting", started_at: null, timer_end: null });
-    paused = false;
-    Object.assign(S.starts[o.id], { state: "started", started_at: nowIso(), timer_end: new Date(Date.now() + 25 * 60e3).toISOString(), until: null });
+    if (cur && cur.id !== o.id) Object.assign(cur, { state: "waiting", started_at: null, timer_end: null, paused_left: null });
+    Object.assign(S.starts[o.id], { state: "started", started_at: nowIso(), timer_end: new Date(Date.now() + 25 * 60e3).toISOString(), paused_left: null, until: null });
+    save();                    // a start must survive iOS clearing the app; go() only draws
     go("now");
   }
   /* Done tells the stack too — a start it filed is closed there, and a start you filed is
-     matched to its dump by the same id. Held three seconds so UNDO can take it back. */
+     matched to its dump by the same id. Held three seconds so UNDO can take it back.
+     Every finish leaves a tombstone (id → when), so an older export can never bring the text back.
+     The last step of a broken-down start closes the big one too: done if any step was done. */
   function finish(a, outcome) {
     outcome = outcome || "done";
-    const day = C.et().day;
-    const keep = Object.assign({}, a);
-    delete S.starts[a.id];
-    if (a.from === "stack") S.gone[a.id] = nowIso();
+    const day = C.walkerDay();
+    const kept = [], envs = [];
+    const close = (x, how) => {
+      kept.push(Object.assign({}, x));
+      delete S.starts[x.id];
+      S.gone[x.id] = nowIso();
+      envs.push(enqueue("done", { ref: x.id, from: x.from || "phone", outcome: how, words: C.words(x.text) }, { holdMs: 3500 }));
+    };
+    close(a, outcome);
+    const par = a.parent && S.starts[a.parent];
+    const parWas = par ? Object.assign({}, par) : null;
+    if (par && par.state === "split") {
+      if (outcome === "done") par.steps_done = (par.steps_done || 0) + 1;
+      if (!Object.values(S.starts).some((x) => x.parent === par.id)) close(par, par.steps_done ? "done" : "dropped");
+    }
     if (outcome === "done") S.counters[day] = { day: day, done: ((S.counters[day] || {}).done || 0) + 1, at: nowIso() };
-    const env = enqueue("done", { ref: a.id, from: a.from || "phone", outcome: outcome, words: C.words(a.text) }, { holdMs: 3500 });
     commit();
-    toast((outcome === "done" ? "Done. " : "Dropped. ") + a.text.slice(0, 40), () => {
-      S.outbox = S.outbox.filter((e) => e.id !== env.id);
-      S.starts[keep.id] = keep;
-      delete S.gone[keep.id];
-      if (outcome === "done") S.counters[day].done = Math.max(0, S.counters[day].done - 1);
+    toast((outcome === "done" ? "Done. " : "Dropped. ") + a.text.slice(0, 40) + (kept.length > 1 ? " — and the big one it came from" : ""), () => {
+      if (envs.some((e) => inFlight.has(e.id) || !S.outbox.some((x) => x.id === e.id))) return alreadyOut();
+      envs.forEach((e) => takeBack(e.id));
+      kept.forEach((x) => { S.starts[x.id] = x; delete S.gone[x.id]; });
+      if (parWas) S.starts[parWas.id] = parWas;
+      if (outcome === "done" && S.counters[day]) S.counters[day].done = Math.max(0, S.counters[day].done - 1);
       commit();
     });
   }
-  function notToday(o) { Object.assign(S.starts[o.id], { state: "parked", until: C.shiftDay(C.et().day, 1) }); commit(); }
+  function notToday(o) {
+    const x = S.starts[o.id];
+    if (!x) return;
+    const was = { state: x.state, until: x.until || null };
+    Object.assign(x, { state: "parked", until: C.shiftDay(C.walkerDay(), 1) });
+    commit();
+    toast("Back tomorrow. " + x.text.slice(0, 32) + (x.text.length > 32 ? "…" : ""), () => {
+      const cur = S.starts[o.id];
+      if (cur && cur.state === "parked") { Object.assign(cur, was); commit(); }
+    });
+  }
 
   /* ---------- DUMP: tap sends it out and forgets it; hold keeps it here as a start ---------- */
   function takeBox() {
@@ -761,7 +882,10 @@ const CORE = (function () {
     if (!t) return "";
     const n = bytesOf(t);
     if (n > C.DUMP_MAX_BYTES) { toast("Too long for one dump (" + Math.ceil(n / 1024) + " KB; the door takes " + Math.floor(C.DUMP_MAX_BYTES / 1024) + " KB). Split it — nothing was sent."); return ""; }
+    const w = C.dumpWireBytes(t, doorKey(), BUILD);
+    if (w > C.DOOR_MAX_BODY) { toast("Too long for one dump — " + Math.ceil(n / 1024) + " KB of text is " + Math.ceil(w / 1024) + " KB on the wire (line breaks and quotes count twice); the door takes 32 KB. Split it — nothing was sent."); return ""; }
     box.value = ""; box.style.height = "";
+    S.boxed = null;                          // the words are in an envelope now
     return t;
   }
   async function dumpGo() {
@@ -791,13 +915,22 @@ const CORE = (function () {
   }
 
   /* ---------- CARDS ---------- */
+  let shownCard = null, shownAt = 0;
   function answer(c, choice) {
+    if (Date.now() - shownAt < 600) return;   // the second half of a double-tap never answers the card that just appeared
     const live = S.cards[c.id];
     if (!live || live.answered || C.cardExpired(live, Date.now())) return;
     live.answered = { choice: choice, at: nowIso(), sent: false };
+    const ans = live.answered;
     const env = enqueue("card_answer", { card_id: c.id, choice: choice }, { holdMs: 3500 });
     commit();
-    toast("Sent: " + choice, () => { S.outbox = S.outbox.filter((e) => e.id !== env.id); live.answered = null; commit(); });
+    // A pull can replace the card object during the hold: always go back through the id.
+    toast("Sent: " + choice + " — " + String(live.text || "").slice(0, 28) + (String(live.text || "").length > 28 ? "…" : ""), () => {
+      if (!takeBack(env.id)) return alreadyOut();
+      const cur = S.cards[c.id];
+      if (cur && cur.answered && cur.answered.at === ans.at) cur.answered = null;
+      commit();
+    });
   }
 
   /* ---------- FLOOR ---------- */
@@ -811,12 +944,12 @@ const CORE = (function () {
     const env = enqueue("floor", { v: v }, { id: id, holdMs: 3500 });
     C.VECTORS.forEach((k) => delete draft[k]);
     commit();
-    toast("Logged the floor.", () => { delete S.floor[id]; S.outbox = S.outbox.filter((e) => e.id !== env.id); commit(); });
+    toast("Logged the floor.", () => { if (!takeBack(env.id)) return alreadyOut(); delete S.floor[id]; commit(); });
   }
 
   /* ---------- LANES (kept in now.lanes.v1, as 0.9.x wrote it) ---------- */
   function toggleLane(key) {
-    const day = C.et().day, log = ls.json(K.lanes, {});
+    const day = C.walkerDay(), log = ls.json(K.lanes, {});
     const d = Object.assign({}, log[day] || {});
     const on = !d[key];
     if (on) d[key] = true; else delete d[key];
@@ -856,7 +989,7 @@ const CORE = (function () {
     if (!keyed()) lamp("lampOut", "bad", noDoorWhy() + (q ? " — " + q + " waiting here" : "") + ". STUCK → The door.");
     else if (n) lamp("lampOut", "warn", "Dark until 06:00 ET — the door is shut by the rule." + (q ? " " + q + " held; they go after six." : ""));
     else if (e === "unauthorized" || e === "bad_response") lamp("lampOut", "bad", failName(e) + (q ? " — " + q + " held here" : "") + ". STUCK → The door.");
-    else if (dead) lamp("lampOut", "bad", dead + " the door refused — kept on this phone. STUCK → The door to retry.");
+    else if (dead) lamp("lampOut", "bad", dead + " the door refused — kept on this phone. STUCK → The door: retry it, change it or let it go.");
     else if (q) lamp("lampOut", "warn", q + " waiting to go out — " + outWhy() + ". Next try on the next sync.");
     else lamp("lampOut", "ok", "Everything the door takes is out." + (S.sync.pushed_at ? " Last sent " + clockOf(S.sync.pushed_at) + " ET." : "") + tail);
 
@@ -866,7 +999,8 @@ const CORE = (function () {
     else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || S.sync.err_in === "bad_response")) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
     else if (!p) lamp("lampIn", "warn", "Never pulled yet.");
     else if (age > 60 * 60e3) lamp("lampIn", "warn", "Last pull " + clockOf(p) + " ET, " + ago(p) + " ago — cards may be stale.");
-    else lamp("lampIn", "ok", "Pulled " + clockOf(p) + " ET — " + (open ? open + " card" + (open > 1 ? "s" : "") + " waiting on you." : "nothing waiting on you."));
+    else lamp("lampIn", "ok", "Pulled " + clockOf(p) + " ET — " + (open ? open + " card" + (open > 1 ? "s" : "") + " waiting on you." : "nothing waiting on you.") +
+      (S.sync.band === "thin" || S.sync.band === "fail" ? " The floor reads " + S.sync.band + ", so the door holds new cards until a full, steady reading." : ""));
 
     const left = C.minutesToCutoff();
     const cut = $("lampCut");
@@ -876,13 +1010,14 @@ const CORE = (function () {
 
   /* ---------- rendering ---------- */
   function btn(label, cls, fn) { const b = document.createElement("button"); b.className = "btn " + cls; b.textContent = label; b.onclick = fn; return b; }
-  let paused = false, pausedLeft = 0;
   function fmtT(ms) { const s = Math.max(0, Math.round(ms / 1e3)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
   function tickTimer() {
     const a = active(), el = $("timer");
     $("timerRow").hidden = !a;
     if (!a) return;
-    if (paused) { el.textContent = fmtT(pausedLeft); return; }
+    // Paused is part of the start (paused_left, ms), so it survives a reload and the label can't drift.
+    $("tPause").textContent = a.paused_left != null ? "resume" : "pause";
+    if (a.paused_left != null) { el.textContent = fmtT(a.paused_left); el.classList.remove("over"); return; }
     const left = Date.parse(a.timer_end || 0) - Date.now();
     el.textContent = left <= 0 ? "-" + fmtT(-left) : fmtT(left);
     el.classList.toggle("over", left <= 0);
@@ -898,15 +1033,16 @@ const CORE = (function () {
     $("nowDark").hidden = !d; $("nowBody").hidden = !!d;
     if (d) $("nowDark").innerHTML = darkHtml(d);
     const a = active(), q = waiting(), acts = $("firstActs");
+    let p = null;
     acts.innerHTML = "";
     const h2 = $("firstText");
     if (a) {
       $("firstTag").textContent = "Started · " + ago(a.started_at) + " ago";
       h2.textContent = a.text; h2.className = a.text.length > 64 ? "long" : "";
       $("firstWhy").textContent = "Do only this. Done closes it; Not now puts it back.";
-      acts.append(btn("Done", "primary", () => finish(a)), btn("Not now", "", () => { Object.assign(a, { state: "waiting", started_at: null, timer_end: null }); paused = false; commit(); }));
+      acts.append(btn("Done", "primary", () => finish(a)), btn("Not now", "", () => { Object.assign(a, { state: "waiting", started_at: null, timer_end: null, paused_left: null }); commit(); }));
     } else if (q.length) {
-      const p = C.pickFirst(q, floorCode());
+      p = C.pickFirst(q, floorCode());
       const o = p.item;
       $("firstTag").textContent = o.from === "stack" ? "Start this? · from the stack" : "Start this?";
       h2.textContent = o.text; h2.className = o.text.length > 64 ? "long" : "";
@@ -920,8 +1056,8 @@ const CORE = (function () {
     }
     tickTimer();
 
-    const today = C.et().day;
-    const rc = Object.values(S.receipts).filter((r) => r.at && C.et(new Date(r.at)).day === today).sort((x, y) => String(y.at).localeCompare(String(x.at)));
+    const today = C.walkerDay();
+    const rc = Object.values(S.receipts).filter((r) => r.at && C.walkerDay(new Date(r.at)) === today).sort((x, y) => String(y.at).localeCompare(String(x.at)));
     const qd = S.outbox.filter((e) => e.op === "dump" && !e.dead).length;
     $("sOut").textContent = (rc.length ? rc.length + " out today" : "nothing out today") + (qd ? " · " + qd + " waiting" : "");
     $("sOutAge").textContent = rc.length ? ago(rc[0].at) + (rc[0].readback === "ok" ? " · readback ok" : "") : "";
@@ -938,9 +1074,9 @@ const CORE = (function () {
     if (S.brief) $("sBrief").textContent = S.brief.text;
     renderLanes();
 
-    const ql = $("queue");
+    const ql = $("queue"), rest = q.filter((i) => !p || i !== p.item);     // FIRST is shown once, on its own card
     ql.innerHTML = "";
-    q.slice(0, 12).forEach((i) => {
+    rest.slice(0, 12).forEach((i) => {
       const row = document.createElement("div");
       row.className = "item";
       row.innerHTML = '<div class="t">' + esc(i.text) + "</div>";
@@ -953,16 +1089,16 @@ const CORE = (function () {
         mk("▶", "Start", "acc", () => start(i)));
       const s = document.createElement("div");
       s.className = "s" + (i.from === "stack" ? " acc" : "");
-      s.innerHTML = (i.from === "stack" ? "stack" : "landed") + "<br>" + esc(clockOf(i.at));
+      s.innerHTML = (i.from === "stack" ? "stack" : "landed") + "<br>" + esc(ago(i.at));
       row.append(mini, s);
       ql.append(row);
     });
-    if (q.length > 12) { const m = document.createElement("div"); m.className = "item"; m.innerHTML = '<div class="t muted">…and ' + (q.length - 12) + " more, oldest first</div>"; ql.append(m); }
-    $("queueCard").hidden = !q.length;
+    if (rest.length > 12) { const m = document.createElement("div"); m.className = "item"; m.innerHTML = '<div class="t muted">…and ' + (rest.length - 12) + " more, oldest first</div>"; ql.append(m); }
+    $("queueCard").hidden = !rest.length;
   }
 
   function renderLanes() {
-    const row = $("laneRow"), day = C.et().day, log = ls.json(K.lanes, {}), td = log[day] || {}, wd = C.dow(day);
+    const row = $("laneRow"), day = C.walkerDay(), log = ls.json(K.lanes, {}), td = log[day] || {}, wd = C.dow(day);
     row.innerHTML = "";
     C.LANES.forEach((l) => {
       const b = document.createElement("button");
@@ -981,9 +1117,12 @@ const CORE = (function () {
     $("cardsDark").hidden = !d; $("deck").hidden = !!d;
     if (d) $("cardsDark").innerHTML = d === "red" ? '<div class="big">Red floor</div>No asks tonight. The cards keep.' : '<div class="big">Dark until 06:00 ET</div>No asks tonight. The cards keep.';
     const open = C.openCards(S, Date.now()), deck = $("deck");
+    // The card on screen stays on screen until it is answered, let go or retired: a pull that lands
+    // under your finger never swaps it for another.
     deck.innerHTML = "";
     if (open.length) {
-      const c = open[0], expired = C.cardExpired(c, Date.now());
+      const c = open.find((x) => x.id === shownCard) || open[0], expired = C.cardExpired(c, Date.now());
+      if (c.id !== shownCard) { shownCard = c.id; shownAt = Date.now(); }
       const rec = c.recommend || c.rec || "";
       const opts = Array.isArray(c.options) && c.options.length ? c.options.slice(0, 4).map(String) : ["Yes", "No"];
       const kind = c.kind ? String(c.kind).replace(/_/g, " ").toLowerCase() : "card";
@@ -999,11 +1138,14 @@ const CORE = (function () {
         ans.append(btn("later", "ghost sm", () => { c.later = true; commit(); }));
       }
     } else {
-      deck.innerHTML = '<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">A seat files a card; this phone pulls it; your tap goes back through the door.</div></div>';
+      const hold = S.sync.band === "thin" || S.sync.band === "fail";
+      deck.innerHTML = '<div class="card"><div class="tag">Nothing waiting on you.</div><div class="rec" style="margin-top:6px">' + (hold
+        ? "The floor reads " + esc(S.sync.band) + ", so the door holds new cards until a full, steady reading."
+        : "A seat files a card; this phone pulls it; your tap goes back through the door.") + "</div></div>";
     }
     const dec = Object.values(S.cards).filter((c) => c.answered).sort((x, y) => String(y.answered.at || "").localeCompare(String(x.answered.at || ""))).slice(0, 8);
     $("decidedCard").hidden = !dec.length;
-    $("decidedList").innerHTML = dec.map((c) => '<div class="park"><span>' + esc(c.text || c.id) + " → <b>" + esc(c.answered.choice) + '</b></span><span class="n">' + (c.answered.refused ? "not taken · " + esc(c.answered.refused) : (c.answered.sent ? "sent " : "waiting ") + esc(clockOf(c.answered.at))) + "</span></div>").join("");
+    $("decidedList").innerHTML = dec.map((c) => '<div class="park"><span>' + esc(c.text || c.id) + " → <b>" + esc(c.answered.choice) + '</b></span><span class="n">' + (c.answered.refused ? "not taken · " + esc(c.answered.refused) : c.answered.kept ? "answered elsewhere · " + esc(c.answered.kept) : c.answered.already ? "the door already had an answer" : (c.answered.sent ? "sent " : "waiting ") + esc(clockOf(c.answered.at))) + "</span></div>").join("");
   }
 
   function renderFloor() {
@@ -1068,17 +1210,79 @@ const CORE = (function () {
     acts.append(btn(keyed() ? "Save" : "Save door", keyed() ? "sm" : "primary", saveDoor));
     if (doorUrl()) acts.append(btn("Test door", "sm", testDoor));
     if (keyed()) acts.append(btn("Sync now", "sm primary", syncNow));
-    if (deadOut().length) acts.append(btn("Retry " + deadOut().length + " refused", "sm", () => { deadOut().forEach((e) => { delete e.dead; }); commit(); scheduleFlush(0); }));
+    if (deadOut().length) acts.append(btn("Retry " + deadOut().length + " refused", "sm", retryDead));
     if (doorUrl() || doorKey()) acts.append(btn("Clear", "sm ghost", () => { ls.set(K.url, null); ls.set(K.key, null); dirty.url = dirty.key = false; commit(); }));
+    renderDead();
     const err = S.sync.err_out || S.sync.err_in;
     $("doorStamps").innerHTML = "out <b>" + (S.sync.pushed_at ? esc(clockOf(S.sync.pushed_at)) + " ET" : "never") + "</b> · in <b>" + (S.sync.pulled_at ? esc(clockOf(S.sync.pulled_at)) + " ET" : "never") + "</b> · waiting <b>" + pending().length + "</b>" +
       (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b>" : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
       (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + (err ? " · last error <b>" + esc(err) + "</b>" : "");
   }
+  /* What the door refused stays on this phone, in sight: each one with the door's word for why.
+     A dump can go back into the box to be shortened or split, or be let go (with UNDO). */
+  const OP_NAME = { dump: "dump", floor: "floor reading", done: "done", lane: "lane" };
+  function renderDead() {
+    const list = $("deadList"), dead = deadOut();
+    list.hidden = !dead.length;
+    list.innerHTML = "";
+    dead.forEach((e) => {
+      const row = document.createElement("div");
+      row.className = "park dead";
+      const what = e.op === "dump" ? "“" + String(e.body.text || "").slice(0, 40) + (String(e.body.text || "").length > 40 ? "…" : "") + "”" : OP_NAME[e.op] || e.op;
+      row.innerHTML = "<span>" + esc(what) + ' <span class="n muted">· refused: ' + esc(e.dead) + "</span></span>";
+      const mini = document.createElement("div");
+      mini.className = "mini";
+      const mk = (label, title, fn) => { const b = document.createElement("button"); b.className = "chipbtn"; b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.onclick = fn; return b; };
+      if (e.op === "dump") mini.append(mk("to box", "Back into the DUMP box", () => deadToBox(e.id)));
+      mini.append(mk("✕", "Let it go", () => letGo(e.id)));
+      row.append(mini);
+      list.append(row);
+    });
+  }
+  /* Unsent words are never only in the box: until they go out again (or you empty the box), the store
+     keeps them as S.boxed and a relaunch puts them back. */
+  function deadToBox(id) {
+    const i = S.outbox.findIndex((e) => e.id === id && e.dead), box = $("dumpBox");
+    if (i < 0) return;
+    if (box.value.trim()) { toast("The DUMP box has words in it — send or clear them first."); return; }
+    const env = S.outbox[i], text = String(env.body.text || "");
+    S.outbox.splice(i, 1);
+    S.boxed = { text: text, at: nowIso() };
+    box.value = text;
+    commit();
+    go("now");
+    toast("Back in the box — shorten or split it, then DUMP.", () => {
+      if (box.value === text) { box.value = ""; box.style.height = ""; }
+      S.boxed = null;
+      if (!S.outbox.some((e) => e.id === env.id)) S.outbox.splice(Math.min(i, S.outbox.length), 0, env);
+      commit();
+    });
+  }
+  function letGo(id) {
+    const i = S.outbox.findIndex((e) => e.id === id && e.dead);
+    if (i < 0) return;
+    const env = S.outbox[i];
+    S.outbox.splice(i, 1);
+    commit();
+    toast("Let go — it never reached the stack.", () => {
+      if (!S.outbox.some((e) => e.id === env.id)) S.outbox.splice(Math.min(i, S.outbox.length), 0, env);
+      commit();
+    });
+  }
+  async function retryDead() {
+    const ids = deadOut().map((e) => e.id);
+    ids.forEach((id) => { const e = S.outbox.find((x) => x.id === id); if (e) delete e.dead; });
+    commit();
+    toast("Retrying " + ids.length + "…");
+    await flush();
+    const again = S.outbox.filter((e) => ids.indexOf(e.id) >= 0 && e.dead), sent = ids.filter((id) => !S.outbox.some((e) => e.id === id)).length;
+    toast(again.length ? (sent ? sent + " went; " : "") + again.length + " refused again — " + again[0].dead + ". Move it to the box to change it, or let it go." : sent === ids.length ? "All " + ids.length + " went out." : "Still waiting — " + outWhy() + ".");
+  }
   function saveDoor() {
     const u = $("doorUrlBox").value.trim(), k = $("doorKeyBox").value.trim();
     const bad = u && C.doorUrlProblem(u);
     if (bad) { toast("That door URL is " + bad + ". Nothing saved."); return; }
+    if (u !== doorUrl()) { S.sync.ops = []; S.sync.door = null; S.sync.band = null; }   // another door: it has listed nothing yet
     ls.set(K.url, u || null);
     if (k) ls.set(K.key, k);
     dirty.url = dirty.key = false;
@@ -1117,16 +1321,22 @@ const CORE = (function () {
     else if (route === "floor") renderFloor();
     else if (route === "stuck") renderStuck();
     if (route !== "now") $("phone").classList.toggle("dark", !!dark());
-    requestAnimationFrame(fades);
   }
-  function fades() {
-    [["firstCard", 0], ["queue", 1]].forEach(([id, keep]) => {
-      const el = $(id);
-      if (!el) return;
-      const over = el.scrollHeight - el.clientHeight > 2;
-      el.classList.toggle("more", over);
-      if (!keep && !over) el.scrollTop = 0;
-    });
+
+  /* A home-screen app that is only ever resumed never reloads, so it would run an old build for
+     weeks. On return (at most hourly) it asks the server which build is current, and reloads to it
+     only when nothing is in hand: no text in the box, no floor half-set, no door being typed. */
+  let lastBuildCheck = 0;
+  const idle = () => !$("dumpBox").value.trim() && !C.VECTORS.some((k) => typeof draft[k] === "number") && !dirty.url && !dirty.key && !$("splitBox").value.trim() && $("toast").hidden;
+  async function checkBuild() {
+    if (Date.now() - lastBuildCheck < 3600e3) return;
+    lastBuildCheck = Date.now();
+    try {
+      if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+      const r = await fetch("./?build=" + Date.now(), { cache: "no-store" });
+      const m = (await r.text()).match(/const BUILD = "([^"]+)"/);
+      if (m && m[1] !== BUILD && idle()) location.reload();
+    } catch (e) {}
   }
 
   /* ---------- your data: export / import ---------- */
@@ -1152,13 +1362,20 @@ const CORE = (function () {
     if (!inc) { toast("That is not a NOW export file."); return; }
     const stampOf = (r) => Date.parse((r && (r.answered && r.answered.at || r.at || r.started_at)) || 0) || 0;
     let added = 0, merged = 0;
-    for (const k of ["starts", "cards", "floor", "receipts", "counters", "gone"]) {
-      for (const id in inc[k]) {
+    for (const id of Object.keys(inc.gone)) if (C.safeId(id) && typeof inc.gone[id] === "string" && !S.gone[id]) S.gone[id] = inc.gone[id];
+    for (const k of ["starts", "cards", "floor", "receipts", "counters"]) {
+      for (const id of Object.keys(inc[k])) {
+        if (!C.safeId(id) || !inc[k][id] || typeof inc[k][id] !== "object") continue;
+        if (k === "starts" && S.gone[id]) continue;              // finished — here or on the phone that exported
         if (!S[k][id]) { S[k][id] = inc[k][id]; added++; }
         else if (stampOf(inc[k][id]) > stampOf(S[k][id])) { S[k][id] = inc[k][id]; merged++; }
       }
     }
-    for (const e of inc.outbox) if (!S.outbox.some((x) => x.id === e.id)) { S.outbox.push(e); added++; }
+    for (const id in S.starts) if (S.gone[id]) delete S.starts[id];
+    for (const raw of inc.outbox) {
+      const e = C.cleanEnvelope(raw, S.receipts);
+      if (e && !S.outbox.some((x) => x.id === e.id)) { S.outbox.push(e); added++; }
+    }
     const lanes = b.lanes;
     if (lanes && typeof lanes === "object") { const log = ls.json(K.lanes, {}); for (const d in lanes) log[d] = Object.assign({}, log[d] || {}, lanes[d]); ls.set(K.lanes, JSON.stringify(log)); }
     commit();
@@ -1167,18 +1384,33 @@ const CORE = (function () {
   }
 
   /* ---------- toast / undo ---------- */
-  let toastT = null, undoFn = null;
+  let toastT = null, undoFn = null, toastEnd = 0;
+  const alreadyOut = () => toast("Already on its way — UNDO came too late.");
+  /* The toast sits just above the DUMP button, wherever the box and the keyboard have put it. */
+  function placeToast() {
+    const t = $("toast");
+    if (t.hidden) return;
+    const d = $("dumpGo").getBoundingClientRect();
+    t.style.bottom = "auto";
+    t.style.top = Math.max(8, d.top - t.offsetHeight - 10) + "px";
+  }
+  function endToast() { clearInterval(toastT); $("toast").hidden = true; undoFn = null; }
+  /* The UNDO window is wall-clock time, like the hold it guards: iOS stops timers while the app is
+     in the background, so counting ticks would leave UNDO on screen after the thing had gone. */
   function toast(text, undo) {
     $("toastText").textContent = text;
     undoFn = undo || null;
-    let left = 3;
-    $("toastUndo").textContent = "UNDO · 3";
+    toastEnd = Date.now() + 3000;
     $("toastUndo").hidden = !undo;
     $("toast").hidden = false;
+    placeToast();
     clearInterval(toastT);
-    toastT = setInterval(() => { left--; if (left <= 0) { clearInterval(toastT); $("toast").hidden = true; undoFn = null; } else $("toastUndo").textContent = "UNDO · " + left; }, 1000);
+    const tick = () => { const left = Math.ceil((toastEnd - Date.now()) / 1000); if (left <= 0) endToast(); else $("toastUndo").textContent = "UNDO · " + left; };
+    tick();
+    toastT = setInterval(tick, 250);
   }
-  $("toastUndo").onclick = () => { if (undoFn) undoFn(); clearInterval(toastT); $("toast").hidden = true; undoFn = null; };
+  // Checked at the tap, not at the last tick; the toast closes first so the undo can speak.
+  $("toastUndo").onclick = () => { const fn = undoFn, inTime = Date.now() < toastEnd; endToast(); if (fn && inTime) fn(); };
   $("briefLine").onclick = () => { if (S.brief) toast(S.brief.text + " · pulled " + ago(S.brief.at) + " ago"); };
   ["lampOut", "lampIn", "lampCut"].forEach((id) => { $(id).onclick = () => toast($(id).dataset.msg || id); });
 
@@ -1207,9 +1439,12 @@ const CORE = (function () {
     b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dumpGo(); } };
   })();
   $("dumpBox").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); dumpGo(); } });
-  $("dumpBox").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; });
-  $("tPlus").onclick = () => { const a = active(); if (!a) return; const base = paused ? Date.now() + pausedLeft : Math.max(Date.now(), Date.parse(a.timer_end || 0)); paused = false; $("tPause").textContent = "pause"; a.timer_end = new Date(base + 5 * 60e3).toISOString(); commit(); };
-  $("tPause").onclick = () => { const a = active(); if (!a) return; if (!paused) { pausedLeft = Date.parse(a.timer_end || 0) - Date.now(); paused = true; $("tPause").textContent = "resume"; } else { paused = false; $("tPause").textContent = "pause"; a.timer_end = new Date(Date.now() + pausedLeft).toISOString(); commit(); } };
+  $("dumpBox").addEventListener("input", (e) => {
+    e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; placeToast();
+    if (S.boxed) { S.boxed = e.target.value.trim() ? { text: e.target.value, at: nowIso() } : null; save(); }
+  });
+  $("tPlus").onclick = () => { const a = active(); if (!a) return; if (a.paused_left != null) a.paused_left += 5 * 60e3; else a.timer_end = new Date(Math.max(Date.now(), Date.parse(a.timer_end || 0)) + 5 * 60e3).toISOString(); commit(); };
+  $("tPause").onclick = () => { const a = active(); if (!a) return; if (a.paused_left == null) a.paused_left = Date.parse(a.timer_end || 0) - Date.now(); else { a.timer_end = new Date(Date.now() + a.paused_left).toISOString(); a.paused_left = null; } commit(); };
   $("logFloor").onclick = logFloor;
   $("sameFloor").onclick = () => { const f = latestFloor(); if (!f) return; C.VECTORS.forEach((k) => { draft[k] = typeof f.v[k] === "number" ? f.v[k] : null; }); renderFloor(); };
   $("splitGo").onclick = () => {
@@ -1236,13 +1471,17 @@ const CORE = (function () {
 
   /* When to talk to the stack: at launch, whenever the phone comes back to the app, when the
      network comes back, every five minutes while it is open, and when a push says so. */
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { render(); sync(); } });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { endToast(); return; }          // leaving the app ends the UNDO window
+    adoptStored(); render(); sync(); checkBuild();
+  });
   window.addEventListener("online", () => sync());
+  window.addEventListener("storage", (e) => { if (e.key === K.store && adoptStored()) render(); });
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, 5 * 60 * 1000);
   setInterval(tickTimer, 500);
   let lastDark = dark(), lastMinute = -1;
   setInterval(() => { const d = dark(), m = new Date().getMinutes(); if (d !== lastDark || m !== lastMinute) { if (lastDark === "night" && !d) sync(); lastDark = d; lastMinute = m; render(); } }, 15000);
-  window.addEventListener("resize", () => requestAnimationFrame(fades));
+  window.addEventListener("resize", () => requestAnimationFrame(placeToast));
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
     navigator.serviceWorker.addEventListener("message", (e) => { if (e && e.data && e.data.type === "pull") { if (e.data.route) go(e.data.route); sync(); } });
@@ -1252,6 +1491,7 @@ const CORE = (function () {
   for (const id in S.cards) S.cards[id].later = false;      // "later" means until the next launch
   save();
   $("verNum").textContent = BUILD;
+  if (S.boxed && !$("dumpBox").value) $("dumpBox").value = S.boxed.text;   // words moved back from STUCK, not yet re-sent
   const routes = ["now", "cards", "floor", "stuck"], asked = location.hash.slice(1);
   go(routes.indexOf(asked) >= 0 ? asked : routes.indexOf(ls.get(K.route)) >= 0 ? ls.get(K.route) : "now");
   sync();

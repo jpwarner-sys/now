@@ -30,8 +30,10 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET") return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // A navigation revalidates with the server every time (no-cache), so a new build is never hidden
+  // behind the browser's HTTP cache and the version tag in the header stays true.
   e.respondWith(
-    fetch(req)
+    fetch(req, req.mode === "navigate" ? { cache: "no-cache" } : undefined)
       .then(function (res) {
         if (res && res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
         return res;

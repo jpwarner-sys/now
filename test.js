@@ -20,8 +20,16 @@ const fs = require("fs");
 const path = require("path");
 const ROOT = __dirname;
 const INDEX = process.env.NOW_INDEX || path.join(ROOT, "index.html");
-const SRC = fs.readFileSync(INDEX, "utf8");
+let SRC = fs.readFileSync(INDEX, "utf8");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
+/* The page's Content-Security-Policy lets only its own inline scripts run, each pinned by its hash.
+   An edit to either script changes its hash; `node test.js --pin-csp` writes the new ones in. */
+const scriptHashes = (src) => [...src.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((x) => "'sha256-" + require("crypto").createHash("sha256").update(x[1], "utf8").digest("base64") + "'");
+if (process.argv.includes("--pin-csp")) {
+  SRC = SRC.replace(/(<meta http-equiv="Content-Security-Policy" content="[^"]*?script-src )[^;]*;/, (_, a) => a + scriptHashes(SRC).join(" ") + ";");
+  fs.writeFileSync(INDEX, SRC);
+  console.log("CSP pinned: " + scriptHashes(SRC).join(" ") + "\n");
+}
 
 const results = {};
 function check(group, name, ok, detail) {
@@ -76,15 +84,23 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("WIRE", "card_answer: id is the card, at is the tap", a.op === "card_answer" && a.id === "c-17" && a.choice === "Yes" && a.at === "2026-09-24T14:00:00.000Z");
 
   const reading = { at: "2026-09-24T13:00:00.000Z", v: { family: 3, energy: 3, recharge: 3, balance: 3, harmony: 3, control: 3 } };
-  const p = CORE.pullBody(KEY, reading);
+  const NOW = Date.parse("2026-09-24T14:00:00.000Z");          // one hour after the reading
+  const p = CORE.pullBody(KEY, reading, NOW);
   check("WIRE", "cards pull: exact field set", eq(Object.keys(p).sort(), ["floor", "key", "op", "since"]), Object.keys(p));
   check("WIRE", "cards pull: since is always \"0\" (door defects D1/D2)", p.since === "0");
   check("WIRE", "cards pull: floor is a JSON string of the band", typeof p.floor === "string" && JSON.parse(p.floor).state === "ok");
   check("WIRE", "cards pull: never the six numbers", !/energy|family|control/.test(p.floor));
   check("WIRE", "band: never logged → unknown", eq(CORE.floorBand(null), { state: "unknown" }));
-  check("WIRE", "band: B → thin", CORE.floorBand({ at: "x", v: { family: 3, energy: 2, recharge: 3, balance: 3, harmony: 4, control: 4 } }).state === "thin");
-  check("WIRE", "band: C → fail, red", (() => { const b = CORE.floorBand({ at: "x", v: { family: 3, energy: 3, recharge: 3, balance: 3, harmony: 1, control: 2 } }); return b.state === "fail" && b.red; })());
-  check("WIRE", "band: partial F → thin", CORE.floorBand({ at: "x", v: { energy: 3, control: 3 } }).state === "thin");
+  const R = (v, at) => ({ at: at || "2026-09-24T13:00:00.000Z", v: v });
+  check("WIRE", "band: B → thin", CORE.floorBand(R({ family: 3, energy: 2, recharge: 3, balance: 3, harmony: 4, control: 4 }), NOW).state === "thin");
+  check("WIRE", "band: C → fail, red", (() => { const b = CORE.floorBand(R({ family: 3, energy: 3, recharge: 3, balance: 3, harmony: 1, control: 2 }), NOW); return b.state === "fail" && b.red; })());
+  check("WIRE", "band: partial F → thin", CORE.floorBand(R({ energy: 3, control: 3 }), NOW).state === "thin");
+  const thinV = { family: 3, energy: 2, recharge: 3, balance: 3, harmony: 4, control: 4 };
+  check("WIRE", "band: a reading 11 h 59 m old still speaks", CORE.floorBand(R(thinV, "2026-09-24T02:01:00.000Z"), NOW).state === "thin");
+  check("WIRE", "band: a reading 12 h old says nothing — exactly {state:\"unknown\"}", eq(CORE.floorBand(R(thinV, "2026-09-24T02:00:00.000Z"), NOW), { state: "unknown" }));
+  check("WIRE", "band: an old Redline no longer holds the door", CORE.floorBand(R({ family: 3, energy: 3, recharge: 3, balance: 3, harmony: 1, control: 2 }, "2026-09-21T13:00:00.000Z"), NOW).state === "unknown");
+  check("WIRE", "band: an unreadable time is not fresh", CORE.floorBand(R(thinV, "x"), NOW).state === "unknown");
+  check("WIRE", "floorFresh is the one 12 h rule", CORE.FLOOR_FRESH_MS === 12 * 3600e3 && CORE.floorFresh(R(thinV), NOW) && !CORE.floorFresh(null, NOW));
 
   const f = CORE.wire(env("floor", { v: reading.v }, "fl-1"), KEY, BUILD);
   check("WIRE", "floor (proposed): op, event_id, at, origin, v", f.op === "floor" && f.event_id === "fl-1" && f.origin_surface === "walker" && eq(f.v, reading.v) && f.key === KEY);
@@ -104,6 +120,16 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("WIRE", "door URL: a key in it refused", /key/.test(CORE.doorUrlProblem("https://example.invalid/exec?key=abc") || ""));
   check("WIRE", "door URL: junk refused", CORE.doorUrlProblem("door please") === "not a URL");
   check("WIRE", "dump cap under the door's 32 KB", CORE.DUMP_MAX_BYTES <= 32768 - 512);
+  {
+    const K64 = "k".repeat(64);
+    const plain = "a".repeat(CORE.DUMP_MAX_BYTES);
+    const escaped = 'say "hi"\n'.repeat(2800).trim();                        // 25,199 bytes of text, ~33.8 KB as JSON
+    check("WIRE", "the body is measured, not the text: a full-cap plain dump fits", CORE.dumpWireBytes(plain, K64, BUILD) <= CORE.DOOR_MAX_BODY, CORE.dumpWireBytes(plain, K64, BUILD));
+    check("WIRE", "a dump under the text cap whose JSON escaping passes 32 KB does not fit", Buffer.byteLength(escaped) < CORE.DUMP_MAX_BYTES && CORE.dumpWireBytes(escaped, K64, BUILD) > CORE.DOOR_MAX_BODY, CORE.dumpWireBytes(escaped, K64, BUILD));
+    const d = CORE.wire(env("dump", { text: "café ☕\n\"x\"" }), KEY, BUILD);
+    check("WIRE", "bodyBytes is the UTF-8 length of the JSON the phone sends", CORE.bodyBytes(d) === Buffer.byteLength(JSON.stringify(d)));
+    check("WIRE", "dumpWireBytes never under-counts the real body (short key, UUID id)", CORE.dumpWireBytes(escaped, "short", BUILD) >= CORE.bodyBytes(CORE.wire(env("dump", { text: escaped }), "short", BUILD)));
+  }
 }
 
 /* ------------------------------------------------------------------ STORE */
@@ -151,6 +177,10 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("STORE", "migrate: junk held entries ignored", CORE.migrate(null, [null, { at: "x" }, 7], null).outbox.length === 0);
   check("STORE", "normalize: junk → empty", eq(CORE.normalize("junk"), CORE.emptyStore()));
   check("STORE", "normalize: round-trips a store", eq(CORE.normalize(JSON.parse(JSON.stringify(s))), s));
+  check("STORE", "normalize: words moved back to the box survive a relaunch; junk there does not", CORE.normalize({ boxed: { text: "a thought", at: "t" } }).boxed.text === "a thought" && CORE.normalize({ boxed: { text: 7 } }).boxed === null && CORE.normalize({ boxed: { text: "" } }).boxed === null);
+  { const st = CORE.emptyStore(); st.sync.ops = ["floor", "done"]; st.sync.door = "walker-door@4";
+    CORE.mergePull(st, { ok: true, cards: [] }, "2026-09-24T14:00:00.000Z", { state: "ok" });
+    check("STORE", "mergePull: a pull that lists no ops means none (a rolled-back door takes no floor/done/lane)", eq(st.sync.ops, []) && st.sync.door === null, st.sync); }
 
   const now = "2026-09-24T14:00:00.000Z";
   const card = (id, extra) => Object.assign({ id, at: "2026-09-24T12:00:00Z", kind: "WORD", text: "Q " + id, options: ["Yes", "No"], recommend: "Yes", ttl_h: 24 }, extra || {});
@@ -198,6 +228,11 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("CLOCK", "cutoff lamp absent at noon", CORE.minutesToCutoff(at("2026-09-24T16:00:00Z")) === null);
   check("CLOCK", "cutoff lamp 180 min at 23:00", CORE.minutesToCutoff(at("2026-09-25T03:00:00Z")) === 180);
   check("CLOCK", "cutoff lamp 30 min at 01:30", CORE.minutesToCutoff(at("2026-09-25T05:30:00Z")) === 30);
+  check("CLOCK", "walker day: 00:30 ET still belongs to the day before", CORE.walkerDay(at("2026-09-25T04:30:00Z")) === "2026-09-24");
+  check("CLOCK", "walker day: 06:00 ET is the new day", CORE.walkerDay(at("2026-09-25T10:00:00Z")) === "2026-09-25");
+  check("CLOCK", "walker day: 23:59 ET is still today", CORE.walkerDay(at("2026-09-25T03:59:00Z")) === "2026-09-24");
+  check("CLOCK", "fall-back night: at 00:30 EDT the cutoff is 150 real minutes away, not 90", CORE.minutesToCutoff(at("2026-11-01T04:30:00Z")) === 150, CORE.minutesToCutoff(at("2026-11-01T04:30:00Z")));
+  check("CLOCK", "spring-forward night: at 01:30 EST the cutoff is 30 minutes away", CORE.minutesToCutoff(at("2026-03-08T06:30:00Z")) === 30, CORE.minutesToCutoff(at("2026-03-08T06:30:00Z")));
   check("CLOCK", "ET day rolls at ET midnight", CORE.et(at("2026-09-25T03:59:00Z")).day === "2026-09-24" && CORE.et(at("2026-09-25T04:00:00Z")).day === "2026-09-25");
   // lanes: school skips weekends — Fri + Mon done, Sat/Sun stepped over → streak 2 on Monday
   const log = { "2026-09-18": { school: true }, "2026-09-21": { school: true } };
@@ -214,7 +249,8 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
     check("SHIP", name + ": no /macros/s/ exec path", !/macros\/s\//.test(blob));
     check("SHIP", name + ": no key= in a query string", !/[?&]key=[^\s"'`)]/.test(blob));
     check("SHIP", name + ": no op=cards in a URL", !/[?&]op=cards/.test(blob));
-    check("SHIP", name + ": no long opaque tokens", !/[A-Za-z0-9]{40,}/.test(blob), (blob.match(/[A-Za-z0-9]{40,}/) || [])[0]);
+    const bare = blob.replace(/'sha256-[A-Za-z0-9+/]{43}='/g, "");       // the CSP's script hashes are not secrets
+    check("SHIP", name + ": no long opaque tokens", !/[A-Za-z0-9]{40,}/.test(bare), (bare.match(/[A-Za-z0-9]{40,}/) || [])[0]);
   }
   check("SHIP", "build tag set", !!BUILD);
   check("SHIP", "build tag on the first screen matches", SRC.includes('id="verNum">' + BUILD + "<"), BUILD);
@@ -225,7 +261,7 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "door stays in now.door_url / now.door_key", kvals.includes("now.door_url") && kvals.includes("now.door_key"));
   check("SHIP", "localStorage only through the one helper", (SRC.match(/localStorage\./g) || []).length === 4, (SRC.match(/localStorage\./g) || []).length);
   check("SHIP", "0.9.x keys are read, never written", kvals.includes("now.walker.v0") && kvals.includes("now.walker.held") && !/ls\.set\(K\.(v0|held|stamp)\b/.test(SRC));
-  check("SHIP", "exactly two network calls: the door POST and the keyless GET", (SRC.match(/\bfetch\(/g) || []).length === 2);
+  check("SHIP", "exactly three network calls: the door POST, the keyless GET, and the same-origin build check", (SRC.match(/\bfetch\(/g) || []).length === 3 && /fetch\("\.\/\?build=" \+ Date\.now\(\), \{ cache: "no-store" \}\)/.test(SRC));
   check("SHIP", "door POST is text/plain (no preflight)", /method: "POST", headers: \{ "Content-Type": "text\/plain;charset=utf-8" \}/.test(SRC));
   check("SHIP", "the keyless GET carries no body", /fetch\(url, \{ method: "GET", cache: "no-store" \}\)/.test(SRC));
   check("SHIP", "no artifact runtime, no Google sign-in, no third-party script", !/window\.claude|accounts\.google|googleapis|<script src=/.test(SRC));
@@ -235,6 +271,13 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   const sw = read("sw.js");
   check("SHIP", "service worker touches only same-origin GETs", /req\.method !== "GET"/.test(sw) && /url\.origin !== self\.location\.origin/.test(sw));
   check("SHIP", "service worker is registered", /serviceWorker\.register\("sw\.js"\)/.test(SRC));
+  const csp = (SRC.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/) || [])[1] || "";
+  const dir = (d) => ((csp.match(new RegExp("(?:^|;\\s*)" + d + " ([^;]*)")) || [])[1] || "").trim().split(/\s+/).filter(Boolean);
+  check("SHIP", "CSP: set in the page, before any script", !!csp && SRC.indexOf("Content-Security-Policy") < SRC.indexOf("<script"));
+  check("SHIP", "CSP: only this page's own scripts run — the pinned hashes match (node test.js --pin-csp)", eq(dir("script-src").slice().sort(), scriptHashes(SRC).sort()), { pinned: dir("script-src"), actual: scriptHashes(SRC) });
+  check("SHIP", "CSP: nothing else by default; no base, no forms, no plugins", eq(dir("default-src"), ["'none'"]) && eq(dir("base-uri"), ["'none'"]) && eq(dir("form-action"), ["'none'"]) && !dir("object-src").length);
+  check("SHIP", "CSP: the network is this page and the door (https; plain http only on this machine)", eq(dir("connect-src"), ["'self'", "https:", "http://127.0.0.1:*", "http://localhost:*"]), dir("connect-src"));
+  check("SHIP", "no inline event handlers or javascript: URLs (the CSP would block them)", !/<[^>]+\son[a-z]+\s*=/i.test(SRC.replace(/<script[\s\S]*?<\/script>/g, "")) && !/javascript:/i.test(SRC));
   check("SHIP", "manifest: Walker at the root scope", (() => { const mf = JSON.parse(read("manifest.webmanifest")); return mf.id === "/" && mf.scope === "/" && mf.start_url === "/"; })());
 }
 

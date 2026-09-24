@@ -76,6 +76,9 @@ async function logFloor(page, v) {
   await page.click("#logFloor");
 }
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, name + ".png") });
+/* A person reads a card before tapping it; the app ignores taps in the first 600 ms after a card
+   appears (the tail of a double-tap). Tests tap like a person. */
+const tapAns = async (pg, label) => { await pg.waitForTimeout(650); await pg.click("#ans >> text=" + label); };
 const since = (ms) => new Date(Date.now() - ms).toISOString();
 
 /* =================================================================== the live door */
@@ -116,7 +119,8 @@ await block("DUMP with a door: out → raw, byte count read back, build tagged",
   await tab(page, "now");
   await dump(page, "text the landlord");
   await until(async () => /Out → raw · 17 B · ok/.test(await toastText(page)), "out toast");
-  assert(door.state.raw[1].surface_version === "1.0.1" && door.state.raw[1].origin_surface === "walker", "surface_version", door.state.raw[1]);
+  const build = (fs.readFileSync(path.join(ROOT, "index.html"), "utf8").match(/const BUILD = "([^"]+)"/) || [])[1];
+  assert(door.state.raw[1].surface_version === build && door.state.raw[1].origin_surface === "walker", "surface_version is the build", door.state.raw[1]);
 });
 
 await block("two DUMPs while the door is slow: both go in the same flush, neither waits", async () => {
@@ -179,7 +183,7 @@ await block("a card the stack filed reaches the phone; a tap goes back through t
   assert(await page.isVisible("#ans .btn.primary >> text=Yes"), "the recommendation is the primary button");
   assert(/spend/.test(await page.textContent("#deck .tag")) && /renewals\.md/.test(await page.textContent("#deck .because")), "kind and source shown");
   await shot(page, "cards");
-  await page.click("#ans >> text=No");
+  await tapAns(page, "No");
   await page.waitForTimeout(1000);
   assert(!byId("c-1").answered, "held for the undo window");
   await until(() => byId("c-1").answered && byId("c-1").answered.choice === "No", "answer delivered", 8000);
@@ -190,7 +194,7 @@ await block("UNDO takes an answer back before it leaves", async () => {
   door.put({ id: "c-2", kind: "WORD", text: "Book the Thursday slot?", options: ["Yes", "No"], recommend: "Yes" });
   await nudge(page);
   await until(async () => /Book the Thursday slot/.test(await page.textContent("#deck")), "card 2");
-  await page.click("#ans >> text=Yes");
+  await tapAns(page, "Yes");
   await page.click("#toastUndo");
   await page.waitForTimeout(4500);
   assert(!byId("c-2").answered, "not sent");
@@ -220,7 +224,7 @@ await block("a card answered elsewhere leaves the phone on the next whole pull",
   assert((await store(page)).cards["c-2"], "c-2 still here");
 });
 
-await block("floor, done and lanes are never sent to a door that does not list them (it would file them as dumps)", async () => {
+await block("floor, done and lanes are never sent to a door that does not list them (it would take them down its dump path)", async () => {
   assert(!door.state.posts.some((p) => ["floor", "done", "lane"].includes(p.op)), "no event ops posted", door.state.posts.map((p) => p.op));
   const s = await store(page);
   assert(s.outbox.filter((e) => e.op === "floor").length === 2, "both readings parked on the phone", s.outbox.map((e) => e.op));
@@ -233,11 +237,11 @@ await block("an answer the door will never take is dropped and the card says why
   door.put({ id: "c-4", kind: "WORD", text: "Cancel the trial?", options: ["Yes", "No"] });
   await tab(page, "cards"); await nudge(page);
   await until(async () => (await store(page)).cards["c-4"], "card 4 pulled");
-  await page.click("#ans >> text=Yes");                      // c-2 is first: answer it
+  await tapAns(page, "Yes");                      // c-2 is first: answer it
   await page.waitForTimeout(4200);
   door.state.cards.splice(door.state.cards.findIndex((c) => c.id === "c-4"), 1);   // the door lost c-4
   await until(async () => /Cancel the trial/.test(await page.textContent("#deck")), "c-4 on top");
-  await page.click("#ans >> text=Yes");
+  await tapAns(page, "Yes");
   await until(async () => { const c = (await store(page)).cards["c-4"]; return c && c.answered && c.answered.refused === "not_found"; }, "refused not_found", 9000);
   assert(/not taken · not_found/.test(await page.textContent("#decidedList")), "Decided says not taken");
   assert(!(await store(page)).outbox.some((e) => e.op === "card_answer"), "not retried forever");
@@ -248,7 +252,7 @@ await block("an expired card cannot be answered; it can be let go", async () => 
   await nudge(page);
   await until(async () => /Old question/.test(await page.textContent("#deck")), "expired card shown");
   assert(/expired/.test(await page.textContent("#deck .tag")) && !(await page.isVisible("#ans >> text=Yes")), "no answer buttons");
-  await page.click("#ans >> text=/Dismiss/");
+  await tapAns(page, "/Dismiss/");
   await until(async () => /Nothing waiting on you/.test(await page.textContent("#deck")), "deck empty");
 });
 
@@ -344,10 +348,18 @@ await block("too long for one dump: refused before sending, text kept in the box
   await page.fill("#dumpBox", "");
 });
 
-await block("every route renders at phone width with no page errors", async () => {
-  for (const r of ["now", "cards", "floor", "stuck"]) { await tab(page, r); await page.waitForTimeout(150); await shot(page, "route-" + r); }
-  const w = await page.evaluate(() => document.documentElement.scrollWidth);
-  assert(w <= 390, "no horizontal scroll", w);
+await block("every route renders at phone width with no page errors, nothing past the phone's edges", async () => {
+  for (const r of ["now", "cards", "floor", "stuck"]) {
+    await tab(page, r); await page.waitForTimeout(150); await shot(page, "route-" + r);
+    // .phone clips its overflow, so the page never scrolls sideways even when a child is cut off:
+    // measure every drawn element against the phone's own edges instead.
+    const out = await page.evaluate(() => {
+      const ph = document.getElementById("phone").getBoundingClientRect();
+      return [...document.querySelectorAll("#phone *")].filter((e) => !e.closest(".sr")).map((e) => [e, e.getBoundingClientRect()])
+        .filter(([, b]) => b.width > 0 && b.height > 0 && (b.right > ph.right + 0.5 || b.left < ph.left - 0.5)).map(([e]) => e.id || e.className || e.tagName);
+    });
+    assert(!out.length, "inside the phone on " + r, out.slice(0, 5));
+  }
 });
 await page.context().close();
 
@@ -428,6 +440,339 @@ await block("a door that lists floor/done/lane gets them; parked readings go the
   assert(!Object.values((await store(p)).starts).some((x) => x.id === "st-1"), "never re-filed");
   await p.click(".lane >> text=Cook");
   await until(() => d.state.events.some((e) => e.op === "lane" && e.lane === "cooking" && e.on === true), "lane went", 6000);
+  await p.context().close(); await d.close();
+});
+
+/* =================================================================== 1.1 fixes */
+console.log("\n1.1 — WHAT THE AUDIT AND THE REAL DOOR FOUND");
+async function keyedPhone(d, { clockAt, hash = "", viewport } = {}) {
+  const ctx = await browser.newContext({ viewport: viewport || { width: 390, height: 844 } });
+  await ctx.addInitScript((s) => { if (!sessionStorage.getItem("__seeded")) { for (const k in s) localStorage.setItem(k, s[k]); sessionStorage.setItem("__seeded", "1"); } }, { "now.door_url": d.url, "now.door_key": d.key });
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(e.message));
+  if (clockAt) await p.clock.install({ time: new Date(clockAt) });
+  await p.goto(APP + hash);
+  return p;
+}
+
+await block("UNDO after the phone was away is refused: the answer went, and phone and door agree", async () => {
+  const d = await startMockDoor({ key: "k-undo-late-1" });
+  d.put({ id: "c-late-1", kind: "WORD", text: "Late undo?", options: ["Yes", "No"] });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z", hash: "#cards" });
+  await until(async () => /Late undo/.test(await p.textContent("#deck")), "card on the deck");
+  await tapAns(p, "Yes");
+  const t = await p.evaluate(() => Date.now());
+  await p.clock.pauseAt(t);                               // iOS suspends the app: its timers stop…
+  await p.clock.setSystemTime(t + 10000);                 // …while the clock goes on 10 s; nothing fires
+  assert(await p.isVisible("#toastUndo"), "the stale toast is still on screen, as on iOS");
+  await p.click("#toastUndo");                            // the first tap on return lands before any tick
+  await p.clock.resume();
+  await until(() => d.state.cards[0].answered && d.state.cards[0].answered.choice === "Yes", "the answer reached the door");
+  const s = await store(p);
+  assert(s.cards["c-late-1"] && s.cards["c-late-1"].answered && s.cards["c-late-1"].answered.choice === "Yes", "the phone still shows it answered", s.cards["c-late-1"]);
+  await p.context().close(); await d.close();
+});
+
+await block("a pull landing inside the UNDO window does not strand the answer", async () => {
+  const d = await startMockDoor({ key: "k-undo-pull-1" });
+  d.put({ id: "c-pull-1", kind: "WORD", text: "Undo across a pull?", options: ["Yes", "No"] });
+  const p = await keyedPhone(d, { hash: "#cards" });
+  await until(async () => /Undo across a pull/.test(await p.textContent("#deck")), "card on the deck");
+  await tapAns(p, "No");
+  const n = d.state.posts.length;
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));   // a pull replaces the card object
+  await until(() => d.state.posts.slice(n).some((x) => x.op === "cards"), "a pull landed");
+  await p.waitForTimeout(150);
+  await p.click("#toastUndo");
+  await p.waitForTimeout(4200);
+  assert(!d.state.cards[0].answered, "nothing reached the door");
+  const s = await store(p);
+  assert(!s.cards["c-pull-1"].answered && !s.outbox.some((e) => e.op === "card_answer"), "the card is open again and nothing waits to go", s.cards["c-pull-1"]);
+  assert(/Undo across a pull/.test(await p.textContent("#deck")), "back on the deck");
+  await p.context().close(); await d.close();
+});
+
+await block("an old thin floor stops holding the cards after 12 h, and the IN lamp says why while it does", async () => {
+  const d = await startMockDoor({ key: "k-floor-age-1" });
+  const T = Date.parse("2026-09-24T16:00:00Z");            // 12:00 ET
+  const p = await keyedPhone(d, { clockAt: T });
+  await logFloor(p, { family: 3, energy: 2, recharge: 3, balance: 3, harmony: 4, control: 4 });   // B · Low battery
+  await p.clock.runFor(4000);
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(() => d.state.lastFloor && d.state.lastFloor.state === "thin", "the door saw a thin floor");
+  d.put({ id: "c-held-1", kind: "WORD", text: "Held for the floor?", options: ["Yes", "No"] });
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await p.waitForTimeout(600);
+  assert(!(await store(p)).cards["c-held-1"], "held while the floor is thin");
+  await p.click("#lampIn");
+  assert(/floor reads thin/.test(await toastText(p)), "the lamp says the door is holding cards", await toastText(p));
+  await p.clock.setSystemTime(T + 13 * 3600e3);              // 01:00 ET next day: the reading is 13 h old
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(async () => (await store(p)).cards["c-held-1"], "released once the reading went stale");
+  assert(d.state.lastFloor && d.state.lastFloor.state === "unknown", "the door was told nothing, not an old thin", d.state.lastFloor);
+  await p.context().close(); await d.close();
+});
+
+await block("a double-tap answers the card under the finger, never the next one", async () => {
+  const d = await startMockDoor({ key: "k-double-tap" });
+  d.put({ id: "c-dbl-1", kind: "WORD", text: "First card?", options: ["Yes", "No"], recommend: "Yes", at: since(120e3) });
+  d.put({ id: "c-dbl-2", kind: "WORD", text: "Second card?", options: ["Yes", "No"], recommend: "Yes", at: since(60e3) });
+  const p = await keyedPhone(d, { hash: "#cards" });
+  await until(async () => /First card/.test(await p.textContent("#deck")), "first card shown");
+  await p.waitForTimeout(700);
+  await p.dblclick("#ans .btn.primary");
+  await p.waitForTimeout(4500);
+  const s = await store(p);
+  assert(s.cards["c-dbl-1"].answered && s.cards["c-dbl-1"].answered.choice === "Yes", "the first card was answered");
+  assert(!s.cards["c-dbl-2"].answered, "the second card was not", s.cards["c-dbl-2"]);
+  assert(/Second card/.test(await p.textContent("#deck")), "and it is waiting, unanswered");
+  await p.context().close(); await d.close();
+});
+
+await block("the toast never covers the DUMP button (375 × 667 and 430 × 932)", async () => {
+  for (const vp of [{ width: 375, height: 667 }, { width: 430, height: 932 }]) {
+    const ctx = await browser.newContext({ viewport: vp });
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(e.message));
+    await p.goto(APP);
+    await p.fill("#dumpBox", "line one\nline two\nline three");
+    await p.click("#dumpGo");
+    await until(async () => await p.isVisible("#toast"), "toast shown");
+    const t = await p.locator("#toast").boundingBox(), b = await p.locator("#dumpGo").boundingBox();
+    assert(t.y + t.height <= b.y + 1, "toast sits above DUMP at " + vp.width + "×" + vp.height, { toastBottom: t.y + t.height, dumpTop: b.y });
+    await ctx.close();
+  }
+});
+
+await block("two open copies never erase each other's held dump", async () => {
+  const d = await startMockDoor({ key: "k-two-copies" });
+  d.state.down = true;
+  const a = await keyedPhone(d);
+  const b = await a.context().newPage();
+  b.on("pageerror", (e) => errors.push(e.message));
+  await b.goto(APP);
+  await dump(a, "from copy A");
+  await until(async () => (await store(a)).outbox.some((e) => e.body && e.body.text === "from copy A"), "A holds it");
+  await b.evaluate(() => window.dispatchEvent(new Event("online")));   // B syncs and saves
+  await b.waitForTimeout(800);
+  assert((await store(b)).outbox.some((e) => e.body && e.body.text === "from copy A"), "B's save kept A's dump");
+  d.state.down = false;
+  await b.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(() => d.state.raw.some((r) => r.text === "from copy A"), "delivered");
+  await a.evaluate(() => window.dispatchEvent(new Event("online")));
+  await a.waitForTimeout(800);
+  assert(d.state.raw.filter((r) => r.text === "from copy A").length === 1, "exactly once");
+  await a.context().close(); await d.close();
+});
+
+await block("a queued dump too big for the door is set aside; the queue behind it moves", async () => {
+  const d = await startMockDoor({ key: "k-oversize-q" });
+  const big = 'say "hi"\n'.repeat(2800).trim();              // 25 KB of text, ~34 KB as JSON
+  const held = JSON.stringify([
+    { text: big, at: since(120e3), receipt_id: "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" },
+    { text: "the small one behind it", at: since(60e3), receipt_id: "8a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" },
+  ]);
+  const { page: p } = await phone({ "now.walker.held": held, "now.door_url": d.url, "now.door_key": d.key });
+  await until(() => d.state.raw.some((r) => r.text === "the small one behind it"), "the small one went");
+  await until(async () => (await store(p)).receipts["8a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"], "the phone saved its receipt");
+  assert(!d.state.posts.some((x) => x.receipt_id === "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"), "the big one was never posted");
+  const s = await store(p);
+  const env = s.outbox.find((e) => e.id === "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d");
+  assert(env && env.dead === "payload_too_large", "kept on the phone, marked", env ? { dead: env.dead, tries: env.tries, last_err: env.last_err, err_out: s.sync.err_out } : s.outbox.map((e) => e.id));
+  assert(/bad/.test(await lampClass(p, "lampOut")), "the OUT lamp says so");
+  await p.context().close(); await d.close();
+});
+
+await block("coming back while a DUMP is in the air: the cards pull goes now, not after the dump", async () => {
+  const d = await startMockDoor({ key: "k-back-inflight" });
+  const p = await keyedPhone(d);
+  await until(() => d.state.posts.some((x) => x.op === "cards"), "first pull");
+  d.state.delayMs = 1500;
+  const n = d.state.posts.length;
+  await dump(p, "slow dump in the air");
+  await until(() => d.state.posts.slice(n).some((x) => (x.op || "dump") === "dump"), "the dump is in the air");
+  await p.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await p.waitForTimeout(900);
+  assert(d.state.posts.slice(n).some((x) => x.op === "cards"), "the pull went while the dump was still in the air", d.state.posts.slice(n).map((x) => x.op || "dump"));
+  d.state.delayMs = 0;
+  await p.context().close(); await d.close();
+});
+
+/* =================================================================== 1.1 — second audit */
+console.log("\n1.1 — WHAT THE SECOND AUDIT FOUND");
+/* A store as the phone writes it, for seeding a context. */
+const seedStore = (starts, more) => JSON.stringify(Object.assign({ v: 1, starts: starts || {}, gone: {}, cards: {}, floor: {}, receipts: {}, counters: {}, outbox: [], brief: null, sync: { stamp: "0", ops: [] } }, more || {}));
+const aStart = (id, text, agoMs, extra) => Object.assign({ id: id, text: text, at: since(agoMs), state: "waiting", from: "phone" }, extra || {});
+
+await block("FIRST keeps its buttons on the card at real phone heights, and every Waiting row can be reached", async () => {
+  const starts = {};
+  ["Email the school about Friday pickup", "Fold the laundry", "Call the bank about the card", "Book the dentist", "Water the plants", "Back up the laptop"].forEach((t, i) => { starts["w" + i] = aStart("w" + i, t, (10 - i) * 3600e3); });
+  const phones = [
+    { name: "SE", viewport: { width: 375, height: 667 }, top: 20, bottom: 0 },
+    { name: "iPhone 15 home screen", viewport: { width: 393, height: 852 }, top: 59, bottom: 34 },
+  ];
+  for (const ph of phones) for (const started of [false, true]) {
+    const st = JSON.parse(JSON.stringify(starts));
+    if (started) Object.assign(st.w1, { state: "started", started_at: since(60e3), timer_end: new Date(Date.now() + 24 * 60e3).toISOString() });
+    const ctx = await browser.newContext({ viewport: ph.viewport });
+    // Home-screen apps get real safe-area insets; a desktop browser reports 0. Put the phone's in.
+    await ctx.route(/\/(index\.html)?(\?.*)?$/, async (route) => {
+      const r = await route.fetch();
+      const body = (await r.text()).replace(/env\(safe-area-inset-top\)/g, ph.top + "px").replace(/env\(safe-area-inset-bottom\)/g, ph.bottom + "px");
+      await route.fulfill({ response: r, body: body });
+    });
+    await ctx.addInitScript((s) => { if (!sessionStorage.getItem("__seeded")) { localStorage.setItem("now.store.v1", s); sessionStorage.setItem("__seeded", "1"); } }, seedStore(st));
+    const p = await ctx.newPage();
+    p.on("pageerror", (e) => errors.push(e.message));
+    await p.goto(APP);
+    await until(async () => (await p.locator("#firstActs .btn").count()) >= 2, "FIRST has its buttons");
+    const where = ph.name + (started ? ", started" : ", waiting");
+    const card = await p.locator("#firstCard").boundingBox();
+    const why = await p.locator("#firstWhy").boundingBox();
+    assert(why && why.height > 10, "the why line is not squeezed away (" + where + ")", why);
+    const btns = await p.locator("#firstActs .btn").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent, top: r.top, bottom: r.bottom }; }));
+    assert(btns.every((b) => b.top >= card.y - 0.5 && b.bottom <= card.y + card.height + 0.5), "buttons inside the card (" + where + ")", { card: card, btns: btns });
+    const hit = await p.evaluate(() => { const b = document.querySelector("#firstActs .btn.primary").getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return e && e.textContent; });
+    assert(/Start|Done/.test(hit || ""), "a tap on the primary button lands on it, no scrolling (" + where + ")", hit);
+    const rows = await p.locator("#queue .item").count();
+    assert(rows >= 4, "Waiting lists the rest (" + where + ")", rows);
+    const last = p.locator("#queue .item").last();
+    await last.scrollIntoViewIfNeeded();
+    const lastHit = await last.evaluate((row) => { const b = row.getBoundingClientRect(); const e = document.elementFromPoint(b.left + 20, b.top + b.height / 2); return !!e && row.contains(e); });
+    assert(lastHit, "the last Waiting row can be reached (" + where + ")");
+    await shot(p, "first-" + ph.name.replace(/\W+/g, "-") + (started ? "-started" : "-waiting"));
+    await ctx.close();
+  }
+});
+
+await block("FIRST is shown once — not again under Waiting — and an old one says how old", async () => {
+  const seed = seedStore({ a: aStart("a", "Clean the gutters", 3 * 86400e3), b: aStart("b", "Buy milk", 2 * 3600e3), c: aStart("c", "Call the bank", 3600e3) });
+  const { page: p } = await phone({ "now.store.v1": seed });
+  const first = (await p.textContent("#firstText")).trim();
+  const rows = await p.locator("#queue .item .t").allTextContents();
+  assert(rows.length === 2 && !rows.includes(first), "Waiting holds the other two", { first: first, rows: rows });
+  const stamps = await p.locator("#queue .item .s").allTextContents();
+  assert(stamps.some((x) => /3 d/.test(x)) || first === "Clean the gutters", "a 3-day-old start reads 3 d, not a clock time", stamps);
+  await p.context().close();
+});
+
+await block("Not today can be undone, and a 0.9 park with no day comes back", async () => {
+  const seed = seedStore({ p1: aStart("p1", "Renew the parking permit", 86400e3, { state: "parked" }) });   // a 0.9.x park: no until
+  const { page: p } = await phone({ "now.store.v1": seed });
+  await until(async () => /Renew the parking permit/.test(await p.textContent("#firstText")), "the old park is back on NOW");
+  await p.click("#firstActs >> text=Not today");
+  await until(async () => /Back tomorrow/.test(await toastText(p)) && await p.isVisible("#toastUndo"), "a toast with UNDO");
+  assert(/Nothing waiting/.test(await p.textContent("#firstText")), "put away for today");
+  await p.click("#toastUndo");
+  await until(async () => /Renew the parking permit/.test(await p.textContent("#firstText")), "UNDO brings it back");
+  await p.context().close();
+});
+
+await block("the last step of a broken-down start closes the big one too; UNDO brings both back", async () => {
+  const seed = seedStore({
+    big: aStart("big", "Sort out the garage", 86400e3, { state: "split" }),
+    s1: aStart("s1", "Bag the recycling", 3600e3, { parent: "big" }),
+    s2: aStart("s2", "Sweep the floor", 1800e3, { parent: "big" }),
+  });
+  const { page: p } = await phone({ "now.store.v1": seed });
+  const first = (await p.textContent("#firstText")).trim();
+  const [keepId, dropId] = first === "Sweep the floor" ? ["s2", "s1"] : ["s1", "s2"];
+  await p.click("#queue .item >> [aria-label='Drop it']");                     // the step that is not FIRST
+  await p.waitForTimeout(200);
+  let s = await store(p);
+  assert(s.starts.big && s.starts.big.state === "split" && !s.starts[dropId] && s.starts[keepId], "one step left: the big one waits", Object.keys(s.starts));
+  assert(await p.isHidden("#queueCard"), "nothing else waiting");
+  await p.click("#firstActs >> text=/Start/");
+  await p.click("#firstActs >> text=Done");
+  await until(async () => /and the big one it came from/.test(await toastText(p)), "the toast says the big one closed");
+  s = await store(p);
+  assert(!s.starts.big && !s.starts[keepId], "both gone from the phone", Object.keys(s.starts));
+  const big = s.outbox.find((e) => e.op === "done" && e.body.ref === "big");
+  assert(big && big.body.outcome === "done", "the big one is closed as done (a step was done)", s.outbox.map((e) => e.body));
+  assert(s.gone.big && s.gone.s1 && s.gone.s2, "each leaves a tombstone", s.gone);
+  await p.click("#toastUndo");
+  await p.waitForTimeout(150);
+  s = await store(p);
+  assert(s.starts.big && s.starts.big.state === "split" && s.starts[keepId] && !s.gone.big && !s.gone[keepId], "UNDO brings both back", Object.keys(s.starts));
+  assert(!s.outbox.some((e) => e.op === "done" && (e.body.ref === "big" || e.body.ref === keepId)), "and nothing about them waits to go");
+  await p.context().close();
+});
+
+await block("an older export never brings back a start you finished", async () => {
+  const { page: p } = await phone({ "now.store.v1": seedStore({ f1: aStart("f1", "Fold the laundry", 3600e3) }) });
+  const old = await store(p);
+  await p.click("#firstActs >> text=/Start/");
+  await p.click("#firstActs >> text=Done");
+  await p.waitForTimeout(200);
+  await tab(p, "stuck");
+  await p.setInputFiles("#impFile", { name: "old.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ schema: "joeos.now.export/v2", build: "1.0.1", at: since(7200e3), store: old, lanes: {} })) });
+  await until(async () => /Imported/.test(await toastText(p)), "imported");
+  const s = await store(p);
+  assert(!s.starts.f1 && s.gone.f1, "still finished", s.starts);
+  assert(s.outbox.filter((e) => e.op === "done" && e.body.ref === "f1").length === 1, "one done, never two");
+  await p.context().close();
+});
+
+await block("a refused dump is in sight on STUCK: retry says what happened; back to the box (kept through a relaunch), or let it go", async () => {
+  const d = await startMockDoor({ key: "k-refused-list" });
+  const seed = seedStore({}, { outbox: [
+    { id: "bad!id", op: "dump", at: since(600e3), body: { text: "a private thought about the move" }, tries: 1, dead: "receipt_id_invalid" },
+    { id: "bad!id2", op: "dump", at: since(500e3), body: { text: "another refused one" }, tries: 1, dead: "receipt_id_invalid" },
+  ] });
+  const { page: p } = await phone({ "now.store.v1": seed, "now.door_url": d.url, "now.door_key": d.key });
+  await tab(p, "stuck");
+  const list = await p.textContent("#deadList");
+  assert(/a private thought about the move/.test(list) && /another refused one/.test(list) && /receipt_id_invalid/.test(list), "each dump, with the door's word for why", list);
+  await p.click("#doorActs >> text=/Retry 2 refused/");
+  await until(async () => /2 refused again — receipt_id_invalid/.test(await toastText(p)), "retry says both were refused again");
+  const toBox = () => p.click("#deadList .park:has-text('a private thought') >> text=to box");
+  await toBox();
+  await until(async () => (await p.inputValue("#dumpBox")) === "a private thought about the move", "back in the box");
+  assert(!(await store(p)).outbox.some((e) => e.id === "bad!id"), "out of the outbox");
+  await p.click("#toastUndo");
+  await until(async () => (await store(p)).outbox.some((e) => e.id === "bad!id" && e.dead), "UNDO puts it back");
+  assert((await p.inputValue("#dumpBox")) === "" && !(await store(p)).boxed, "and clears the box");
+  await tab(p, "stuck");
+  await toBox();
+  await until(async () => (await p.inputValue("#dumpBox")) === "a private thought about the move", "in the box again");
+  await p.reload();                                                              // iOS threw the app away
+  await until(async () => (await p.inputValue("#dumpBox")) === "a private thought about the move", "still in the box after a relaunch");
+  await p.click("#dumpGo");
+  await until(() => d.state.raw.some((r) => r.text === "a private thought about the move"), "sent under a new id");
+  assert(!(await store(p)).boxed, "nothing kept once it went");
+  await tab(p, "stuck");
+  await p.click("#deadList >> [aria-label='Let it go']");
+  await until(async () => /Let go/.test(await toastText(p)), "let go");
+  assert(!(await store(p)).outbox.length && await p.isHidden("#deadList"), "gone, and the list with it");
+  await until(async () => !/bad/.test(await lampClass(p, "lampOut")), "the OUT lamp is no longer red");
+  await p.context().close(); await d.close();
+});
+
+await block("a door that stops listing floor/done/lane (rolled back, or another door) gets none of them", async () => {
+  const d = await startMockDoor({ key: "k-rollback-1", mode: "v2" });
+  const p = await keyedPhone(d);
+  await until(async () => ((await store(p)).sync.ops || []).includes("floor"), "the v2 door listed its ops");
+  d.state.mode = "live";                                                         // rolled back to @3
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(async () => ((await store(p)).sync.ops || []).length === 0, "the phone forgot the ops");
+  const n = d.state.posts.length;
+  await logFloor(p, { family: 4, energy: 4, recharge: 4, balance: 4, harmony: 4, control: 4 });
+  await p.waitForTimeout(4000);
+  assert(!d.state.posts.slice(n).some((x) => x.op === "floor"), "no floor sent to a door that does not take it", d.state.posts.slice(n).map((x) => x.op));
+  const env = (await store(p)).outbox.find((e) => e.op === "floor");
+  assert(env && !env.dead, "parked on the phone, not refused", env);
+  await p.context().close(); await d.close();
+});
+
+await block("an answer the door already had is shown as that, not as sent", async () => {
+  const d = await startMockDoor({ key: "k-already-1" });
+  d.put({ id: "c-already", kind: "WORD", text: "Renew the domain?", options: ["Yes", "No"] });
+  const p = await keyedPhone(d, { hash: "#cards" });
+  await until(async () => /Renew the domain/.test(await p.textContent("#deck")), "card on the deck");
+  d.state.cards[0].answered = { choice: "Yes", at: since(60e3) };               // answered on another phone
+  await tapAns(p, "No");
+  await until(async () => /the door already had an answer/.test(await p.textContent("#decidedList")), "Decided says so", 9000);
+  assert(!d.state.raw.some((r) => r.card_id === "c-already" && r.choice === "No"), "the door kept its own answer");
   await p.context().close(); await d.close();
 });
 

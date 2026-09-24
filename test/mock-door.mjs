@@ -1,22 +1,34 @@
 /*
  * mock-door.mjs — a stand-in for walker-door, for tests only. Never shipped.
  *
- * mode "live" answers the way walker-door @3 does (DOOR.md §1–4), because those details
- * are what broke the phone before:
+ * mode "live" answers the way the walker-door @3 source does — checked against that source running
+ * in an Apps Script shim (door harness, 2026-09-24), not against memory:
  *   - POST text/plain with a JSON body → 302 → the browser GETs an echo URL → JSON there
- *   - wrong key / oversize / bad JSON → an EMPTY body
- *   - refusals are {ok:false, code:<n>, error:<word>}
- *   - no op, or an op it does not know → treated as a dump
- *   - cards: `card.at > since` string compare; a floor that is not ok holds cards back
+ *   - wrong key / a body over 32 KB (UTF-8 bytes) / unreadable JSON / not an object → an EMPTY body
+ *   - refusals are {ok:false, code:<n>, error:<word>}; the codes are the live ones (422, 429, 500)
+ *   - no op, or an op it does not know → treated as a dump (a body without dump fields is refused
+ *     schema_or_origin — nothing is filed)
+ *   - 60 dump writes per rolling hour, then rate_limited; a replay of a written receipt still answers
+ *   - card_put validates like the door (id, kind, text ≤ 240, options cut to 4 × 40, recommend, walls,
+ *     50 open cards) and stamps the card held_until_ok from the LAST floor any pull posted
+ *   - cards: `card.at > since` string compare; the hold is PER CARD, set when it was filed; an ok
+ *     (or unknown) pull releases every held card; a thin pull hides only cards filed while thin
  *   - GET with no key → "walker-door"
  * mode "v2" adds the proposed ops (DOOR.md §5): it advertises them and takes floor/done/lane,
  * and returns starts and a brief on the pull.
+ *
+ * put(card) is the tests' back door: no validation (short ids like "c-1" are fine), but the same
+ * floor stamp as card_put.
  */
 import http from "node:http";
 
-const RID = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9_-]{8,64})$/i;
+const RID = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z0-9_-]{8,64})$/;
 const SV = /^[A-Za-z0-9._-]{1,32}$/;
+const KINDS = ["SPEND", "MAIL_OUT", "IRREVERSIBLE", "WORD"];
+const WALLS = ["_hearth", "raw_", "0_law", "1_model", "2_now", "modules/life"];
 const fail = (code, error) => ({ ok: false, code, error });
+const walled = (s) => { s = String(s || "").toLowerCase(); return !!s && WALLS.some((w) => s.includes(w)); };
+const isoZ = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
 
 export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
   const state = {
@@ -31,29 +43,72 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     delayMs: 0,         // a slow door
     lastFloor: null,
     seen: new Map(),    // receipt_id → first reply (7-day de-dup)
+    rate: [],           // accepted dump writes, ms
   };
   const echoes = new Map();
   let seq = 0;
 
-  function held(floor) {
+  function parseFloor(floor) {
     let f = floor;
-    if (typeof f === "string") { try { f = JSON.parse(f); } catch { f = { state: f }; } }
-    if (!f || typeof f !== "object") return false;
-    return f.state === "thin" || f.state === "fail" || f.red === true || ["C", "!", "A", "B", "D", "—"].includes(f.st);
+    if (f === undefined || f === null || f === "") return null;
+    if (typeof f === "string") { const low = f.toLowerCase(); if (["ok", "thin", "fail"].includes(low)) return { state: low }; try { const o = JSON.parse(f); f = o && typeof o === "object" ? o : { state: low }; } catch { f = { st: f, state: low }; } }
+    return f && typeof f === "object" ? f : null;
+  }
+  function held(f) {
+    if (!f) return false;
+    const st = String(f.state || "").toLowerCase();
+    return st === "thin" || st === "fail" || f.red === true || ["C", "!", "A", "B", "D", "—"].includes(String(f.st || ""));
+  }
+  function applyFloor(f) {
+    if (!f) return;
+    state.lastFloor = f;
+    if (!held(f)) for (const c of state.cards) c.held_until_ok = false;
   }
 
   function dump(b) {
-    if (b.schema !== "lab.intake.raw/v1" || !["walker", "walker_v0"].includes(b.origin_surface)) return fail(400, "schema_or_origin");
-    if (!b.receipt_id) return fail(400, "receipt_id_required");
-    if (!RID.test(b.receipt_id)) return fail(400, "receipt_id_invalid");
-    if (b.surface_version != null && !SV.test(b.surface_version)) return fail(400, "surface_version_invalid");
-    if (typeof b.text !== "string" || !b.text) return fail(400, "schema_or_origin");
-    if (state.seen.has(b.receipt_id)) return state.seen.get(b.receipt_id);
-    const bytes = Buffer.byteLength(b.text, "utf8");
-    state.raw.push({ receipt_id: b.receipt_id, origin_surface: "walker", surface_version: b.surface_version, bytes, text: b.text });
-    const reply = { ok: true, receipt_id: b.receipt_id, bytes };
-    state.seen.set(b.receipt_id, reply);
+    if (b.schema !== "lab.intake.raw/v1" || !["walker", "walker_v0"].includes(b.origin_surface)) return fail(422, "schema_or_origin");
+    const rid = String(b.receipt_id || "").trim();
+    if (!rid) return fail(422, "receipt_id_required");
+    if (!RID.test(rid)) return fail(422, "receipt_id_invalid");
+    if (b.surface_version !== undefined && b.surface_version !== null && b.surface_version !== "" && !SV.test(String(b.surface_version))) return fail(422, "surface_version_invalid");
+    const text = String(b.text || "");
+    if (state.seen.has(rid)) return state.seen.get(rid);
+    const now = Date.now();
+    state.rate = state.rate.filter((t) => t > now - 3600e3);
+    if (state.rate.length >= 60) return fail(429, "rate_limited");
+    state.rate.push(now);
+    const bytes = Buffer.byteLength(text, "utf8");
+    state.raw.push({ receipt_id: rid, origin_surface: "walker", surface_version: b.surface_version, bytes, text });
+    const reply = { ok: true, receipt_id: rid, bytes };
+    state.seen.set(rid, reply);
     return reply;
+  }
+
+  function cardPut(b) {
+    const id = String(b.id || "").trim();
+    if (!RID.test(id)) return fail(422, "id_invalid");
+    if (!KINDS.includes(String(b.kind || ""))) return fail(422, "kind_invalid");
+    const text = String(b.text || "");
+    if (!text || text.length > 240) return fail(422, "text");
+    if (walled(text) || walled(b.source_file)) return fail(422, "walled");
+    const options = [];
+    if (b.options && b.options.length) for (let i = 0; i < b.options.length && options.length < 4; i++) { const l = String(b.options[i] || "").trim(); if (l) options.push(l.slice(0, 40)); }
+    if (!options.length) return fail(422, "options");
+    const recommend = String(b.recommend || "");
+    if (recommend && !options.includes(recommend)) return fail(422, "recommend");
+    let ttl = Number(b.ttl_h); if (!isFinite(ttl) || ttl <= 0) ttl = 24; if (ttl > 720) ttl = 720;
+    const at = String(b.at || isoZ());
+    applyFloor(parseFloor(b.floor));
+    const prev = state.cards.find((c) => c.id === id);
+    if (prev && prev.answered) return fail(422, "already_answered");
+    const h = held(state.lastFloor);
+    const card = { id, at, kind: String(b.kind), text, options, recommend, ttl_h: ttl, source_file: String(b.source_file || ""), held_until_ok: h };
+    if (prev) Object.assign(prev, card);
+    else {
+      if (state.cards.filter((c) => !c.answered).length >= 50) return fail(422, "cards_full");
+      state.cards.push(card);
+    }
+    return { ok: true, id, held_until_ok: h, at };
   }
 
   function reply(b) {
@@ -62,39 +117,39 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     const v2 = state.mode === "v2";
     switch (b.op) {
       case "cards": {
-        state.lastFloor = b.floor;
-        const since = String(b.since || "0");
-        const hold = held(b.floor);
-        const cards = hold ? [] : state.cards
-          .filter((c) => !c.answered && String(c.at) > since)
-          .map(({ answered, ...c }) => c);
-        const out = { ok: true, cards, stamp: new Date().toISOString().replace(/\.\d+Z$/, "Z") };
+        applyFloor(parseFloor(b.floor));
+        const since = b.since === undefined || b.since === null ? "0" : String(b.since);
+        const keep = (c) => { if (["", "0"].includes(since) || !c.at) return true; return /^\d+$/.test(since) && /^\d+$/.test(String(c.at)) ? Number(c.at) > Number(since) : String(c.at) > since; };
+        const cards = state.cards
+          .filter((c) => !c.answered && !c.held_until_ok && !walled(c.text) && !walled(c.source_file) && keep(c))
+          .map((c) => ({ id: c.id, at: c.at, kind: c.kind, text: c.text, options: c.options, recommend: c.recommend, ttl_h: c.ttl_h, source_file: c.source_file || "" }));
+        const out = { ok: true, cards, stamp: isoZ() };
         if (v2) { out.ops = ["floor", "done", "lane"]; out.door = "walker-door@mock-v2"; out.starts = state.starts; out.brief = state.brief; }
         return out;
       }
       case "card_answer": {
-        if (!b.id) return fail(400, "id_required");
-        if (!b.choice) return fail(400, "choice_required");
-        const c = state.cards.find((x) => x.id === b.id);
-        if (!c) return fail(404, "not_found");
-        if (c.answered) return { ok: true, id: b.id, already: true };
-        if (Date.now() > Date.parse(c.at) + (c.ttl_h || 24) * 3600e3) return fail(410, "expired");
-        if (Array.isArray(c.options) && c.options.length && !c.options.includes(b.choice)) return fail(400, "choice_invalid");
-        c.answered = { choice: b.choice, at: b.at };
-        state.raw.push({ receipt_id: b.id, origin_surface: "walker_decision", card_id: b.id, choice: b.choice, at: b.at });
-        return { ok: true, id: b.id, receipt_id: b.id, bytes: 64 };
+        const id = String(b.id || "").trim(), choice = String(b.choice || "").trim();
+        if (!id) return fail(422, "id_required");
+        if (!choice) return fail(422, "choice_required");
+        const c = state.cards.find((x) => x.id === id);
+        if (!c) return fail(422, "not_found");
+        if (c.answered) return { ok: true, id, already: true };
+        const born = Date.parse(c.at || "");
+        if (isFinite(born) && Date.now() > born + (Number(c.ttl_h) || 24) * 3600e3) return fail(422, "expired");
+        if (Array.isArray(c.options) && c.options.length && !c.options.includes(choice)) return fail(422, "choice_invalid");
+        c.answered = { choice, at: b.at };
+        const body = "card_id: " + id + "\nchoice: " + choice + "\nkind: " + (c.kind || "") + "\nat: " + b.at + "\n";
+        state.raw.push({ receipt_id: id, origin_surface: "walker_decision", card_id: id, choice, at: b.at });
+        return { ok: true, id, receipt_id: id, bytes: Buffer.byteLength(body) };
       }
-      case "card_put": {
-        const { op: _op, ...card } = rest;
-        state.cards.push({ ttl_h: 24, ...card });
-        return { ok: true, id: b.id, held_until_ok: false, at: b.at };
-      }
+      case "card_put":
+        return cardPut(b);
       case "floor": case "done": case "lane":
         if (v2) {
           if (!state.events.find((e) => e.event_id === b.event_id)) state.events.push(rest);
           return { ok: true, event_id: b.event_id };
         }
-        return dump(b);                              // the live door: an unknown op is a dump
+        return dump(b);                              // the live door: an unknown op is a dump (and without dump fields, refused)
       default:
         return dump(b);
     }
@@ -110,15 +165,16 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     }
     if (req.url.startsWith("/exec") && req.method === "POST") {
       if (/[?&]key=/.test(req.url)) state.keyInUrl = true;
-      let raw = "";
-      req.on("data", (d) => { raw += d; });
+      const chunks = [];
+      req.on("data", (d) => chunks.push(d));
       req.on("end", () => {
+        const buf = Buffer.concat(chunks);
         state.contentTypes = (state.contentTypes || []).concat(req.headers["content-type"]);
         let out = "";
-        if (raw.length <= 32768) {
+        if (buf.length <= 32768) {                    // bytes, as the door counts them
           let b = null;
-          try { b = JSON.parse(raw); } catch { b = null; }
-          if (b && b.key === key) out = JSON.stringify(reply(b));
+          try { b = JSON.parse(buf.toString("utf8")); } catch { b = null; }
+          if (b && typeof b === "object" && !Array.isArray(b) && b.key === key) out = JSON.stringify(reply(b));
         }
         const id = "e" + ++seq;
         echoes.set(id, out);
@@ -141,7 +197,7 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
       const { port } = server.address();
       resolve({
         url: `http://127.0.0.1:${port}/exec`, key, state,
-        put(card) { state.cards.push({ ttl_h: 24, at: new Date().toISOString(), ...card }); },
+        put(card) { state.cards.push({ ttl_h: 24, at: new Date().toISOString(), held_until_ok: held(state.lastFloor), ...card }); },
         close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
       });
     });

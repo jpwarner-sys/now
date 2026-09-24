@@ -1,5 +1,15 @@
 # Reconciliation — how Walker and joe-os-now became NOW
 
+## 1.1 — audited, and checked against the real door (2026-09-24)
+
+1.0 was checked against a mock of the door written from memory. 1.1 was checked against the door's own @3 source, run under an Apps Script shim, and against an audit of the page by lens (time, iOS, security, UX, the door, the tests), every finding reproduced before it was fixed:
+
+- **Nothing sent can be lost or doubled:** a dump too big *on the wire* (JSON escaping counts line breaks and quotes twice) is caught at DUMP, and one already queued is set aside instead of stopping the queue; UNDO runs on the wall clock and never takes back what is already in the air; two open copies never overwrite each other's store; the 02:00 rule is checked before every send, not once per flush.
+- **What the phone says is true:** an old floor reading stops holding cards after 12 hours, like the red-floor dark; an answer the door already had is shown as that, not as *sent*; a door that stops listing floor/done/lane (rolled back, or another door) gets none of them; the clock counts minutes to the cutoff forward, so DST is honest; what you finish after midnight counts to the day it belongs to (the day ends at the 02:00 cutoff, not at midnight).
+- **Nothing is trapped or hidden:** what the door refused is listed on STUCK with its reason — retry, back to the box (kept through a relaunch until it goes), or let go; FIRST keeps its buttons on the card at real phone heights; a 0.9 park comes back; the last step of a broken-down start closes the big one; Not today has UNDO; a finished start never comes back from an older export.
+- **Only the page's own code runs:** a Content-Security-Policy pins both scripts by hash.
+- **Found in the door, not fixable here:** the @3 card store deletes its own index on every save, so no filed card reaches the phone (DOOR.md §5.7). The fix is one line in the door; it is the door seat's to deploy.
+
 ## 1.0 — rebuilt from first principles (2026-09-24)
 
 0.9.x was a reconciliation: the walker's face with the engine's brain, and every transport either of them had ever used still inside — the artifact runtime's database, its model and its Drive connector, a Google sign-in path, a keyed door, a held-dump queue beside a store beside a pull stamp. On the phone where it actually lives, only one of those does anything: **the keyed door.** The rest were dead weight that made the one live path hard to see and easy to break.
