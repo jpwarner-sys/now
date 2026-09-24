@@ -1,5 +1,23 @@
 # Reconciliation — how Walker and joe-os-now became NOW
 
+## 1.0 — rebuilt from first principles (2026-09-24)
+
+0.9.x was a reconciliation: the walker's face with the engine's brain, and every transport either of them had ever used still inside — the artifact runtime's database, its model and its Drive connector, a Google sign-in path, a keyed door, a held-dump queue beside a store beside a pull stamp. On the phone where it actually lives, only one of those does anything: **the keyed door.** The rest were dead weight that made the one live path hard to see and easy to break.
+
+1.0 keeps what was right and rebuilds what was not:
+
+- **Kept, byte for byte in behaviour:** the face (every screen, the type scale, the lamps, the DUMP bar, "Garbage or Gold?"), the floor matrix, FIRST, lanes, the cutoff lamp, the dark window. The 29 contract cases pass against the same vectors.
+- **Rebuilt:** the plumbing, as **one door with an outbox and a pull** (README, DOOR.md). Everything outbound is an envelope with an id minted once; the door de-duplicates on it; nothing leaves the outbox until the door says ok.
+- **Removed:** the artifact runtime paths (`db`, `sample`, `mcp`), the Google sign-in and Drive multipart writer, and STUCK's two ask-a-model buttons — none of them can run on the hosted phone. STUCK's *Break it down* stays, written by hand.
+- **Fixed against the live door:** the door reads any unknown op as a dump, so the phone never sends an op the door has not listed; the `since` cursor lost held cards (D1/D2), so the pull asks from zero; refusals are named by the door's `error` word, and a refusal that can never succeed is not retried forever (D4); a 0.9 held dump without a receipt id would have migrated to an id the door refuses; the door boxes no longer lose what you typed on a redraw (the Save trap); a keyless *Test door* knock.
+- **Carried across:** a 0.9.x phone upgrades with nothing lost (README § Storage). The 0.9 keys are read, never written.
+
+What 1.0 cannot fix from this repo is the other side of the door: nothing in the stack files cards into it yet, and the ledger does not read answers from it. DOOR.md §6 says what that takes.
+
+Everything below describes 0.9.x and is kept as the record.
+
+---
+
 Two apps were built for the same job, in two conversations, on the same night. This file says exactly what each one was, what came from where, and what was left behind — so the app at `index.html` can be judged instead of taken on trust.
 
 Everything named here is in this repo. `legacy/walker.html` is the first app, unmodified except for one redacted constant. `engine/` is the second app's source, unmodified except for one redacted file.
