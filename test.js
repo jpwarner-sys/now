@@ -279,6 +279,11 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "CSP: the network is this page and the door (https; plain http only on this machine)", eq(dir("connect-src"), ["'self'", "https:", "http://127.0.0.1:*", "http://localhost:*"]), dir("connect-src"));
   check("SHIP", "no inline event handlers or javascript: URLs (the CSP would block them)", !/<[^>]+\son[a-z]+\s*=/i.test(SRC.replace(/<script[\s\S]*?<\/script>/g, "")) && !/javascript:/i.test(SRC));
   check("SHIP", "manifest: Walker at the root scope", (() => { const mf = JSON.parse(read("manifest.webmanifest")); return mf.id === "/" && mf.scope === "/" && mf.start_url === "/"; })());
+  // cache.addAll fails atomically — one missing SHELL path and the install never caches any of them.
+  const shellSrc = (sw.match(/var SHELL = \[([^\]]*)\]/) || [])[1] || "";
+  const shell = [...shellSrc.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  const missingShell = shell.filter((p) => !fs.existsSync(path.join(ROOT, p === "./" ? "index.html" : p)));
+  check("SHIP", "every sw.js SHELL path exists on disk", shell.length > 0 && missingShell.length === 0, missingShell);
 }
 
 /* ------------------------------------------------------------------ report */

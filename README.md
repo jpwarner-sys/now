@@ -74,14 +74,14 @@ A service worker (`sw.js`) keeps the page openable with no signal. It only ever 
 ## Tests
 
 ```
-node test.js          # no dependencies — 190 checks
+node test.js          # no dependencies — 191 checks
 node test.js --pin-csp  # after editing either script: re-pin their hashes in the CSP
-node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 43 scenarios
+node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 48 scenarios
 ```
 
 `test.js` lifts the `<script id="core">` block out of the shipped `index.html` and runs it: joeos-core's own contract vectors (**14 floor-matrix, 15 FIRST** — the same files that test `ops.py`), every wire shape against DOOR.md, the 0.9 migration, the pull-merge rules, the clock on both sides of DST, and the ship greps (no door URL, key, or deployment id anywhere public; every key in `now.*`; the build tag; the CSP's hashes match the scripts).
 
-`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO, including after the phone was away; a card answered elsewhere; an answer refused; a refused dump retried, re-boxed or let go; the dark window; a 0.9.6 phone upgrading; a finished start never coming back from an old export; FIRST at real phone heights; and the proposed door taking floor, done, lanes, starts and the brief — and a rolled-back door getting none of them. Screens land in `test/shots/` for a person to look at.
+`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO, including after the phone was away; a card answered elsewhere; an answer refused; a refused dump retried, re-boxed or let go; the dark window and a red floor; a 0.9.6 phone upgrading; export (never the door key) and import, including a 0.9 file; a finished start never coming back from an old export; a hostile card; opening with no signal; FIRST at real phone heights; and the proposed door taking floor, done, lanes, starts and the brief — and a rolled-back door getting none of them. Screens land in `test/shots/` for a person to look at.
 
 ## Layout
 

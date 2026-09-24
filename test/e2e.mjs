@@ -23,12 +23,13 @@ const { chromium } = await import(PW).catch(() => import("/opt/node22/lib/node_m
 
 /* ---------- a static host for the page, like Pages ---------- */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png" };
-const host = http.createServer((q, r) => {
+function serveStatic(q, r) {
   let f = path.join(ROOT, decodeURIComponent(q.url.split("?")[0].split("#")[0]));
   if (!f.startsWith(ROOT)) { r.writeHead(403); r.end(); return; }
   if (f.endsWith("/")) f += "index.html";
   fs.readFile(f, (e, b) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { "Content-Type": TYPES[path.extname(f)] || "application/octet-stream" }); r.end(b); });
-});
+}
+const host = http.createServer(serveStatic);
 await new Promise((ok) => host.listen(0, "127.0.0.1", ok));
 const APP = `http://127.0.0.1:${host.address().port}/`;
 
@@ -774,6 +775,158 @@ await block("an answer the door already had is shown as that, not as sent", asyn
   await until(async () => /the door already had an answer/.test(await p.textContent("#decidedList")), "Decided says so", 9000);
   assert(!d.state.raw.some((r) => r.card_id === "c-already" && r.choice === "No"), "the door kept its own answer");
   await p.context().close(); await d.close();
+});
+
+/* =================================================================== guards */
+console.log("\nGUARDS — PROMISES THAT HAD NO TEST");
+
+await block("export carries your data and never the door URL or key; import brings it back on a fresh phone", async () => {
+  const d = await startMockDoor({ key: "k-export-SECRET-77" });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+  await ctx.addInitScript((s) => { if (!sessionStorage.getItem("__seeded")) { for (const k in s) localStorage.setItem(k, s[k]); sessionStorage.setItem("__seeded", "1"); } }, { "now.door_url": d.url, "now.door_key": d.key });
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.clock.install({ time: new Date("2026-09-24T16:00:00Z") });   // noon ET — no dark window to fight
+  await p.goto(APP);
+  d.state.down = true;                                                // the dump must still be sitting here to export
+  await dump(p, "export me please");
+  await until(async () => /held on this phone/.test(await toastText(p)), "the dump is held, door down");
+  await logFloor(p, { family: 3, energy: 3, recharge: 3, balance: 3, harmony: 3, control: 3 });
+  await tab(p, "now");
+  await p.click(".lane >> text=Laundry");
+  await until(async () => /1 of 4 today/.test(await p.textContent("#sLanesAge")), "a lane ticked");
+  await tab(p, "stuck");
+  const [download] = await Promise.all([p.waitForEvent("download"), p.click("#storeActs >> text=Export")]);
+  const file = await download.path();
+  const text = fs.readFileSync(file, "utf8");
+  const bundle = JSON.parse(text);
+  assert(bundle.schema === "joeos.now.export/v2", "v2 schema", bundle.schema);
+  assert(!text.includes(d.key) && !text.includes(d.url) && !text.includes("/exec"), "no door secret and no door address in the file");
+  assert(Object.values(bundle.store.floor).some((f) => f.v.harmony === 3), "the floor reading is in the file", bundle.store.floor);
+  assert(bundle.store.outbox.some((e) => e.op === "dump" && e.body.text === "export me please"), "the held dump is in the file", bundle.store.outbox);
+
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });   // a brand-new phone, no seed
+  const p2 = await ctx2.newPage();
+  p2.on("pageerror", (e) => errors.push(e.message));
+  await p2.goto(APP);
+  await tab(p2, "stuck");
+  await p2.setInputFiles("#impFile", file);
+  await until(async () => /Imported/.test(await toastText(p2)), "the toast says Imported");
+  const s2 = await store(p2);
+  assert(Object.values(s2.floor).some((f) => f.v.harmony === 3), "the floor reading landed on the new phone", s2.floor);
+  assert(s2.outbox.some((e) => e.op === "dump" && e.body.text === "export me please"), "the held dump landed on the new phone", s2.outbox);
+  assert((await p2.evaluate(() => localStorage.getItem("now.door_key"))) === null, "no door key arrived with the file");
+  await ctx.close(); await ctx2.close(); await d.close();
+});
+
+await block("a 0.9 export file imports through the migration path", async () => {
+  const v1 = {
+    schema: "joeos.now.export/v1",
+    store: {
+      items: { i1: { id: "i1", text: "Pack lunches", at: since(3600e3), state: "landed" } },
+      cards: {}, floor: {}, receipts: {}, counters: {}, decisions: {},
+    },
+    held: [{ text: "held in the file", at: since(900e3), receipt_id: "1a2b3c4d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" }],
+  };
+  const file = path.join(SHOTS, "v1-export.json");
+  fs.writeFileSync(file, JSON.stringify(v1));
+  const { page: p } = await phone();
+  await tab(p, "stuck");
+  await p.setInputFiles("#impFile", file);
+  await until(async () => /Imported/.test(await toastText(p)), "imported toast");
+  const s = await store(p);
+  assert(Object.values(s.starts).some((x) => x.text === "Pack lunches" && x.state === "waiting"), "the 0.9 item is a start", s.starts);
+  assert(s.outbox.some((e) => e.op === "dump" && e.id === "1a2b3c4d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" && e.body.text === "held in the file"), "the held dump is in the outbox, with its id", s.outbox);
+  await p.context().close();
+});
+
+await block("a red floor goes dark too: NOW and CARDS hide, the door hears fail, DUMP still goes", async () => {
+  const d = await startMockDoor({ key: "k-red-floor-1" });
+  const T = Date.parse("2026-09-24T16:00:00Z");                        // noon ET
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z" });
+  await until(() => d.state.posts.some((x) => x.op === "cards"), "boot pull");
+  await logFloor(p, { family: 3, energy: 3, recharge: 3, balance: 3, harmony: 1, control: 1 });   // C · Redline
+  await p.clock.runFor(4000);                                          // past the 3.5 s hold
+  const n = d.state.posts.length;
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(() => d.state.posts.slice(n).some((x) => x.op === "cards"), "a pull after the red floor");
+  await tab(p, "now");                                                 // logFloor left us on the FLOOR tab
+  assert(await p.isVisible("#nowDark"), "NOW shows the dark note");
+  assert(!(await p.isVisible("#nowBody")), "NOW body hides");
+  await tab(p, "cards");
+  assert(await p.isVisible("#cardsDark"), "CARDS shows the dark note");
+  assert(!(await p.isVisible("#deck")), "the deck hides");
+  const cardsPosts = d.state.posts.filter((x) => x.op === "cards");
+  const last = JSON.parse(cardsPosts[cardsPosts.length - 1].floor);
+  assert(last.state === "fail", "the door is told fail", last);
+  assert(!("harmony" in last) && !("control" in last), "never the six raw vector numbers", last);
+  await dump(p, "dump during a red floor");
+  await until(() => d.state.raw.some((r) => r.text === "dump during a red floor"), "DUMP still goes");
+  await p.clock.setSystemTime(T + 12 * 3600e3 + 60e3);                 // stale reading, and 00:01 ET — not night either
+  await p.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await tab(p, "now");
+  await until(async () => !(await p.isVisible("#nowDark")), "NOW is no longer dark once the reading goes stale");
+  await p.context().close(); await d.close();
+});
+
+await block("a hostile card cannot run code on the phone", async () => {
+  const d = await startMockDoor({ key: "k-xss-1" });
+  d.put({
+    id: "c-xss-1", kind: "WORD",
+    text: '<img src=x onerror="window.__pwned=1">',
+    options: ['<b>Yes</b>', '<script>window.__pwned=2</script>'],
+    recommend: '<b>Yes</b>',
+    because: '"><svg onload=window.__pwned=3>',
+    source_file: '"><svg onload=window.__pwned=3>',
+  });
+  const p = await keyedPhone(d, { hash: "#cards" });
+  await until(async () => /img src=x/.test(await p.textContent("#deck")), "the hostile card is shown");
+  const deckText = await p.textContent("#deck");
+  assert(deckText.includes("<img src=x"), "the tag reads as literal text on the deck", deckText);
+  await p.waitForTimeout(650);                                        // read it like a person before tapping
+  await p.click("#ans .btn.primary");
+  await until(async () => /onerror/.test(await p.textContent("#decidedList")), "the card moved to Decided");
+  const pwned = await p.evaluate(() => window.__pwned);
+  assert(pwned === undefined, "nothing it carried ever ran", pwned);
+  const stray = await p.locator("#deck img, #deck svg, #deck script, #decidedList img").count();
+  assert(stray === 0, "no live img/svg/script element made it into the DOM", stray);
+  await p.context().close(); await d.close();
+});
+
+await block("the home-screen app opens with no signal (service worker, on localhost)", async () => {
+  const host2 = http.createServer(serveStatic);
+  await new Promise((ok) => host2.listen(0, "127.0.0.1", ok));
+  const LOCAL_APP = `http://localhost:${host2.address().port}/`;       // hostname "localhost" — the one non-https origin the worker registers on
+
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.clock.install({ time: new Date("2026-09-24T16:00:00Z") });   // noon ET — a later DUMP is never held by the dark window
+  await p.goto(LOCAL_APP);
+  await p.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await p.evaluate(() => navigator.serviceWorker.controller))) await p.reload();   // the very first load is never controlled
+  await until(async () => !!(await p.evaluate(() => navigator.serviceWorker.controller)), "the page is under the worker");
+
+  const shelled = await p.evaluate(async () => {
+    const c = await caches.open("now-shell-v1");
+    const keys = await c.keys();
+    return keys.some((k) => { const u = new URL(k.url).pathname; return u === "/" || u.endsWith("index.html"); });
+  });
+  assert(shelled, "the shell (index.html) is in the cache");
+
+  const build = await p.textContent("#verNum");
+  host2.closeAllConnections?.(); host2.close();
+  // Only the app's own host dies here. setOffline(true) would also silence the mock door below,
+  // which is not the promise under test — the worker standing in for a dead origin, not the network as a whole.
+  await p.reload();
+  await until(async () => await p.isVisible("#dumpGo"), "the shell still opens with its own host dead");
+  assert((await p.textContent("#verNum")) === build, "the cached build tag still shows", await p.textContent("#verNum"));
+
+  const d = await startMockDoor({ key: "k-sw-shell-1" });
+  await setDoor(p, d.url, d.key);
+  await dump(p, "dumped while the app's own host is dead");
+  await until(() => d.state.raw.some((r) => r.text === "dumped while the app's own host is dead"), "a DUMP still reaches a door that is still up");
+  await ctx.close(); await d.close();
 });
 
 /* =================================================================== report */
