@@ -80,6 +80,7 @@ const since = (ms) => new Date(Date.now() - ms).toISOString();
 
 /* =================================================================== the live door */
 const door = await startMockDoor({ key: "live-test-key" });
+const byId = (id) => door.state.cards.find((c) => c.id === id) || {};
 const { page } = await phone();
 console.log("\nLIVE DOOR (@3 behaviour)");
 
@@ -115,7 +116,7 @@ await block("DUMP with a door: out → raw, byte count read back, build tagged",
   await tab(page, "now");
   await dump(page, "text the landlord");
   await until(async () => /Out → raw · 17 B · ok/.test(await toastText(page)), "out toast");
-  assert(door.state.raw[1].surface_version === "1.0.0" && door.state.raw[1].origin_surface === "walker", "surface_version", door.state.raw[1]);
+  assert(door.state.raw[1].surface_version === "1.0.1" && door.state.raw[1].origin_surface === "walker", "surface_version", door.state.raw[1]);
 });
 
 await block("two DUMPs while the door is slow: both go in the same flush, neither waits", async () => {
@@ -142,6 +143,35 @@ await block("no signal: DUMP holds with the reason named, then goes exactly once
   assert(door.state.raw.filter((r) => r.text === "pay the hydro bill").length === 1, "exactly once");
 });
 
+await block("a long dump queue never holds up the cards, and it counts down as each one goes", async () => {
+  door.state.down = true;
+  for (let i = 1; i <= 5; i++) await dump(page, "queued thought " + i);
+  await until(async () => (await store(page)).outbox.filter((e) => e.op === "dump").length === 5, "five held");
+  door.put({ id: "c-q", kind: "WORD", text: "Queue-jumping card?", options: ["Yes", "No"] });
+  door.state.down = false;
+  door.state.delayMs = 500;                                       // a slow door: ~2.5 s for the queue
+  const seen = new Set();
+  let cardWhileQueued = false;
+  const posts0 = door.state.posts.length;
+  await nudge(page);
+  await until(async () => {
+    const s = await page.evaluate(() => JSON.parse(localStorage.getItem("now.store.v1")));   // what is on disk, not just in memory
+    const q = s.outbox.filter((e) => e.op === "dump").length;
+    seen.add(q);
+    if (s.cards["c-q"] && q > 0) cardWhileQueued = true;
+    return q === 0;
+  }, "queue drained", 10000);
+  door.state.delayMs = 0;
+  assert(cardWhileQueued, "the card arrived while dumps were still going out");
+  assert([...seen].some((q) => q > 0 && q < 5), "saved after each dump, counting down", [...seen]);
+  const ops = door.state.posts.slice(posts0).map((p) => p.op || "dump");
+  assert(ops.indexOf("cards") < ops.lastIndexOf("dump"), "the pull went before the last dump", ops);
+  assert(door.state.raw.filter((r) => /^queued thought/.test(r.text)).length === 5, "all five, once each");
+  door.state.cards.find((c) => c.id === "c-q").answered = { choice: "Yes" };   // answered elsewhere: clear the deck for the next block
+  await nudge(page);
+  await until(async () => !(await store(page)).cards["c-q"], "c-q retired");
+});
+
 await block("a card the stack filed reaches the phone; a tap goes back through the door", async () => {
   door.put({ id: "c-1", kind: "SPEND", text: "Renew the domain for a year?", options: ["Yes", "No"], recommend: "Yes", source_file: "4_WORK/active/renewals.md" });
   await tab(page, "cards"); await nudge(page);
@@ -151,8 +181,8 @@ await block("a card the stack filed reaches the phone; a tap goes back through t
   await shot(page, "cards");
   await page.click("#ans >> text=No");
   await page.waitForTimeout(1000);
-  assert(!door.state.cards[0].answered, "held for the undo window");
-  await until(() => door.state.cards[0].answered && door.state.cards[0].answered.choice === "No", "answer delivered", 8000);
+  assert(!byId("c-1").answered, "held for the undo window");
+  await until(() => byId("c-1").answered && byId("c-1").answered.choice === "No", "answer delivered", 8000);
   await until(async () => /Renew the domain for a year\? → No/.test(await page.textContent("#decidedList")) && /sent/.test(await page.textContent("#decidedList")), "decided shows sent");
 });
 
@@ -163,7 +193,7 @@ await block("UNDO takes an answer back before it leaves", async () => {
   await page.click("#ans >> text=Yes");
   await page.click("#toastUndo");
   await page.waitForTimeout(4500);
-  assert(!door.state.cards[1].answered, "not sent");
+  assert(!byId("c-2").answered, "not sent");
   assert(/Book the Thursday slot/.test(await page.textContent("#deck")), "back on the deck");
 });
 
@@ -263,6 +293,13 @@ await block("Test door knocks without the key", async () => {
   await page.click("#doorActs >> text=Test door");
   await until(async () => /The door answers: walker-door/.test(await toastText(page)), "door answers");
   await shot(page, "stuck");
+});
+
+await block("the door buttons stay inside their card at phone width", async () => {
+  const card = await page.locator("#doorCard").boundingBox();
+  const btns = await page.locator("#doorActs .btn").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent, right: r.right }; }));
+  assert(btns.length >= 4, "Save, Test door, Sync now, Clear", btns.map((b) => b.t));
+  assert(btns.every((b) => b.right <= card.x + card.width - 8), "none runs off the card", btns);
 });
 
 await block("a wrong key: named, held, and nothing lost when it is fixed", async () => {
