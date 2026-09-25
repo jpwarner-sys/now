@@ -796,7 +796,80 @@ await block("a Google error page after the door has worked is a hiccup: named fo
   assert(!/example|invalid|abcdefgh|https/.test(stamps), "words only: no link, host or token", stamps);
   await p.clock.runFor(21000);                                                    // the retry, not the five-minute sync
   await until(async () => !(await store(p)).sync.err_in, "the retry cleared it");
-  assert(!(await store(p)).sync.err_hint, "and what came back with it");
+  assert(!(await store(p)).sync.err_in_hint, "and what came back with it");
+  await p.context().close(); await d.close();
+});
+
+/* =================================================================== 1.1.2 */
+console.log("\n1.1.2 — A KNOCK, NOT THE REQUEST (Joe's 23:39 stamp)");
+async function floorTimes(p, n) {
+  await tab(p, "floor");
+  for (let i = 0; i < n; i++) {
+    for (const k of ["family", "energy", "recharge", "balance", "harmony", "control"]) await p.click(`.seg[data-k=${k}] span[data-n="3"]`);
+    await p.click("#logFloor");
+  }
+}
+await block("a pull knocked right after a good one: STUCK says it was IN, when, and what; OUT has no error; the retry clears it", async () => {
+  const d = await startMockDoor({ key: "k-knock-in-1" });                      // the @3 door: lists no ops, so floor readings park
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:07:00Z" });          // 12:07 ET
+  await until(async () => (await store(p)).sync.pulled_at, "a good pull first");
+  await dump(p, "the last dump of the day");
+  await until(async () => (await store(p)).sync.pushed_at, "the dump went");
+  await floorTimes(p, 4);
+  assert(!d.state.posts.some((b) => b.op === "floor"), "the @3 door is never sent a floor reading", d.state.posts.map((b) => b.op));
+  await p.clock.fastForward(Date.parse("2026-09-25T03:39:05Z") - (await p.evaluate(() => Date.now())));   // 23:39 ET
+  await nudge(p);
+  await until(async () => { const s = await store(p); return Date.parse(s.sync.pulled_at) > Date.parse("2026-09-25T03:39:00Z") && !s.sync.err_in; }, "a good pull at 23:39");
+  Object.assign(d.state, { knockNext: 1, knockOp: "cards" });
+  await nudge(p);                                                                // Sync now, or back to the app, a few seconds later
+  await until(async () => (await store(p)).sync.err_in === "bad_response", "the next pull is knocked");
+  assert(d.state.gets === 1, "doGet ran — the POST arrived as a GET", d.state.gets);
+  const s = await store(p);
+  assert(s.sync.err_out === null && s.sync.err_in_hint === "HTTP 200: walker-door", "IN carries it, OUT does not", s.sync);
+  for (const id of ["lampOut", "lampIn", "lampCut"]) assert(/\bok\b/.test(await lampClass(p, id)), id + " stays green", await lampClass(p, id));
+  await tab(p, "stuck");
+  const stamps = (await p.textContent("#doorStamps")).trim();
+  assert(stamps === "out 12:07 ET · in 23:39 ET · waiting 0 · parked 4 · last error in 23:39 ET bad_response (HTTP 200: walker-door)", "STUCK names the side and the time", stamps);
+  await p.click("#lampIn");
+  const said = await toastText(p);
+  assert(/knock, not the request/.test(said) && !/error page|URL is wrong/.test(said), "IN names a knock, not an error page", said);
+  await p.clock.runFor(21000);
+  await until(async () => !/last error/.test(await p.textContent("#doorStamps")), "the 20 s retry clears it");
+  await p.context().close(); await d.close();
+});
+
+await block("each side keeps its own reply: a dump's error page is never relabelled by a pull's knock", async () => {
+  const d = await startMockDoor({ key: "k-knock-sides-1" });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T20:00:00Z" });          // 16:00 ET
+  await until(async () => (await store(p)).sync.pulled_at, "a good pull first");
+  d.state.htmlNext = 1;
+  await dump(p, "a dump that meets Google's page");
+  await until(async () => (await store(p)).sync.err_out === "bad_response", "OUT got the page");
+  Object.assign(d.state, { htmlNext: 1, knockNext: 1, knockOp: "cards", knockDelayMs: 400 });   // next sync: the dump meets the page again, the pull is knocked and lands last
+  await nudge(p);
+  await until(async () => (await store(p)).sync.err_in === "bad_response", "IN got the knock");
+  await tab(p, "stuck");
+  const stamps = await p.textContent("#doorStamps");
+  assert(/last error out 16:00 ET bad_response \(HTTP 200: Error Sorry, unable to open the file/.test(stamps), "OUT keeps its own page", stamps);
+  assert(/last error in 16:00 ET bad_response \(HTTP 200: walker-door\)/.test(stamps), "IN keeps its own knock", stamps);
+  await p.context().close(); await d.close();
+});
+
+await block("a knocked dump after doPost ran: named a knock, kept under its id, and the retry files it once", async () => {
+  const d = await startMockDoor({ key: "k-knock-out-1" });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T20:00:00Z" });
+  await until(async () => (await store(p)).sync.pulled_at, "a good pull first");
+  Object.assign(d.state, { knockNext: 1, knockOp: "dump", knockAfter: true });  // the door wrote it; only the way back went wrong
+  await dump(p, "written, but the answer was lost");
+  await until(async () => /held on this phone/.test(await toastText(p)), "the DUMP toast");
+  const said = await toastText(p);
+  assert(/knock, not the request/.test(said) && !/error page|URL is wrong/.test(said), "the toast names a knock", said);
+  const env = (await store(p)).outbox.find((e) => e.op === "dump");
+  assert(env && !env.dead && d.state.raw.length === 1, "kept on the phone, and the door already has it once", { env, raw: d.state.raw.length });
+  await p.clock.runFor(21000);
+  await until(async () => (await store(p)).receipts[env.id], "the retry is answered from the door's receipt");
+  const r = (await store(p)).receipts[env.id];
+  assert(d.state.raw.length === 1 && r.readback === "ok", "one raw file, same id, bytes agree", { raw: d.state.raw.length, r });
   await p.context().close(); await d.close();
 });
 

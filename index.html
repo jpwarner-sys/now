@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ifRIq6K1amEF7vMpDlWz1KCJK/n0Y6NYWBfCF+X7Ruc=' 'sha256-oEYL7X9UlheMTFJkGJc4SjJBMDH/P0qeudZyAopPv7I='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-JHWQ8zPDbWmEEQDx/1CRCk/zsfjGleBAL7rHOu30klo=' 'sha256-a+oUk5SZ61FHDfE780yeMAvwh4V+UO/LN8A4I93cdXA='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.1</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.2</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -514,7 +514,7 @@ const CORE = (function () {
   /* ---------- the store on this phone ---------- */
   function emptyStore() {
     return { v: 1, starts: {}, gone: {}, cards: {}, floor: {}, receipts: {}, counters: {}, outbox: [], brief: null, boxed: null,
-      sync: { stamp: "0", pulled_at: null, pushed_at: null, err_in: null, err_out: null, ops: [], door: null } };
+      sync: { stamp: "0", pulled_at: null, pushed_at: null, err_in: null, err_out: null, err_in_at: null, err_out_at: null, err_in_hint: null, err_out_hint: null, ops: [], door: null } };
   }
   function normalize(s) {
     const e = emptyStore();
@@ -591,8 +591,7 @@ const CORE = (function () {
     if ("brief" in j) s.brief = j.brief ? { text: String(typeof j.brief === "object" ? j.brief.text || "" : j.brief), at: nowIso } : null;
     if (j.stamp != null) s.sync.stamp = String(j.stamp);
     s.sync.pulled_at = nowIso;
-    s.sync.err_in = null;
-    if (!s.sync.err_out) s.sync.err_hint = null;
+    s.sync.err_in = s.sync.err_in_at = s.sync.err_in_hint = null;     // IN's own error only: OUT keeps its own
     return s;
   }
   function cardExpired(c, nowMs) {
@@ -616,7 +615,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.1";
+  const BUILD = "1.1.2";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -693,8 +692,10 @@ const CORE = (function () {
   let retryT = null;
   function failed(side, e) {
     const code = (e && e.code) || "?";
+    // Each side keeps its own error, when it happened and what came back — never the other side's.
     S.sync["err_" + side] = code;
-    S.sync.err_hint = code === "bad_response" ? e.hint || null : S.sync.err_hint;
+    S.sync["err_" + side + "_at"] = nowIso();
+    S.sync["err_" + side + "_hint"] = code === "bad_response" ? e.hint || null : null;
     if (code === "bad_response" && doorWorked() && !retryT) retryT = setTimeout(() => { retryT = null; sync(); }, 20000);
     return code;
   }
@@ -784,8 +785,7 @@ const CORE = (function () {
   function acked(env, j) {
     S.outbox = S.outbox.filter((e) => e.id !== env.id);
     S.sync.pushed_at = nowIso();
-    S.sync.err_out = null;
-    if (!S.sync.err_in) S.sync.err_hint = null;
+    S.sync.err_out = S.sync.err_out_at = S.sync.err_out_hint = null;
     if (env.op === "dump") {
       const mine = bytesOf(String(env.body.text || ""));
       const id = String(j.receipt_id || env.id);
@@ -999,11 +999,16 @@ const CORE = (function () {
     write_failed: "The door could not write",
     no_door: "No door on this phone",
   };
-  const failName = (code) => (code === "bad_response" && doorWorked() ? "Google sent an error page instead of the door's answer — a hiccup on its side; trying again" : FAIL[code] || "Door said " + code);
+  /* The door's doGet answers "walker-door" and nothing else; doPost never does. That reply to a POST
+     means a redirect on the way turned the request into a plain GET — a knock. */
+  const knocked = (hint) => /^HTTP \d+: walker-door$/.test(String(hint || ""));
+  const failName = (code, hint) => (code === "bad_response" && doorWorked()
+    ? (knocked(hint) ? "The door got a knock, not the request — Google redirected it on the way. Kept on this phone; trying again" : "Google sent an error page instead of the door's answer — a hiccup on its side; trying again")
+    : FAIL[code] || "Door said " + code);
   function outWhy() {
     if (!keyed()) return noDoorWhy();
     if (C.isNight()) return "Dark until 06:00 ET";
-    return S.sync.err_out ? failName(S.sync.err_out) : "Not sent yet";
+    return S.sync.err_out ? failName(S.sync.err_out, S.sync.err_out_hint) : "Not sent yet";
   }
   function lamp(id, state, msg) { const el = $(id); el.className = "lamp " + state; el.dataset.msg = msg; }
   function renderLamps() {
@@ -1019,11 +1024,11 @@ const CORE = (function () {
     const p = S.sync.pulled_at, age = p ? Date.now() - Date.parse(p) : Infinity, open = C.openCards(S, Date.now()).length;
     if (!keyed()) lamp("lampIn", "bad", "Nothing comes in without a door. STUCK → The door.");
     else if (n) lamp("lampIn", "warn", "Dark until 06:00 ET — no pull, no ask." + (p ? " Last pull " + clockOf(p) + " ET." : ""));
-    else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || (S.sync.err_in === "bad_response" && !doorWorked()))) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
+    else if (S.sync.err_in && (age > 15 * 60e3 || S.sync.err_in === "unauthorized" || (S.sync.err_in === "bad_response" && !doorWorked()))) lamp("lampIn", "bad", "Pull failed — " + failName(S.sync.err_in, S.sync.err_in_hint) + (p ? ". Last good pull " + clockOf(p) + " ET, " + ago(p) + " ago." : ". Never pulled."));
     else if (!p) lamp("lampIn", "warn", "Never pulled yet.");
     else if (age > 60 * 60e3) lamp("lampIn", "warn", "Last pull " + clockOf(p) + " ET, " + ago(p) + " ago — cards may be stale.");
     else lamp("lampIn", "ok", "Pulled " + clockOf(p) + " ET — " + (open ? open + " card" + (open > 1 ? "s" : "") + " waiting on you." : "nothing waiting on you.") +
-      (S.sync.err_in ? " The last try failed — " + failName(S.sync.err_in) + "." : "") +
+      (S.sync.err_in ? " The last try failed — " + failName(S.sync.err_in, S.sync.err_in_hint) + "." : "") +
       (S.sync.band === "thin" || S.sync.band === "fail" ? " The floor reads " + S.sync.band + ", so the door holds new cards until a full, steady reading." : ""));
 
     const left = C.minutesToCutoff();
@@ -1237,10 +1242,12 @@ const CORE = (function () {
     if (deadOut().length) acts.append(btn("Retry " + deadOut().length + " refused", "sm", retryDead));
     if (doorUrl() || doorKey()) acts.append(btn("Clear", "sm ghost", () => { ls.set(K.url, null); ls.set(K.key, null); dirty.url = dirty.key = false; commit(); }));
     renderDead();
-    const err = S.sync.err_out || S.sync.err_in;
+    // Each side's last error says which side, when, and what came back.
+    const lastErr = (side) => { const code = S.sync["err_" + side], at = S.sync["err_" + side + "_at"], hint = S.sync["err_" + side + "_hint"];
+      return code ? " · last error " + side + (at ? " " + esc(clockOf(at)) + " ET" : "") + " <b>" + esc(code) + "</b>" + (hint ? " (" + esc(hint) + ")" : "") : ""; };
     $("doorStamps").innerHTML = "out <b>" + (S.sync.pushed_at ? esc(clockOf(S.sync.pushed_at)) + " ET" : "never") + "</b> · in <b>" + (S.sync.pulled_at ? esc(clockOf(S.sync.pulled_at)) + " ET" : "never") + "</b> · waiting <b>" + pending().length + "</b>" +
       (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b>" : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
-      (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + (err ? " · last error <b>" + esc(err) + "</b>" + (err === "bad_response" && S.sync.err_hint ? " (" + esc(S.sync.err_hint) + ")" : "") : "");
+      (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + lastErr("out") + lastErr("in");
   }
   /* What the door refused stays on this phone, in sight: each one with the door's word for why.
      A dump can go back into the box to be shortened or split, or be let go (with UNDO). */
@@ -1306,11 +1313,11 @@ const CORE = (function () {
     const u = $("doorUrlBox").value.trim(), k = $("doorKeyBox").value.trim();
     const bad = u && C.doorUrlProblem(u);
     if (bad) { toast("That door URL is " + bad + ". Nothing saved."); return; }
-    if (u !== doorUrl()) Object.assign(S.sync, { ops: [], door: null, band: null, pulled_at: null, pushed_at: null, err_hint: null });   // another door: it has listed nothing and answered nothing yet
+    if (u !== doorUrl()) Object.assign(S.sync, { ops: [], door: null, band: null, pulled_at: null, pushed_at: null });   // another door: it has listed nothing and answered nothing yet
     ls.set(K.url, u || null);
     if (k) ls.set(K.key, k);
     dirty.url = dirty.key = false;
-    S.sync.err_out = S.sync.err_in = S.sync.err_hint = null;
+    Object.assign(S.sync, { err_out: null, err_in: null, err_out_at: null, err_in_at: null, err_out_hint: null, err_in_hint: null });
     if (!keyed()) { toast(noDoorWhy() + " — still needed."); commit(); return; }
     commit();
     syncNow();
@@ -1328,8 +1335,8 @@ const CORE = (function () {
   async function syncNow() {
     toast("Syncing…");
     await sync();
-    const err = S.sync.err_out || S.sync.err_in;
-    toast(err ? failName(err) + "." : "Synced — " + (pending().length ? pending().length + " still waiting out, " : "all out, ") + C.openCards(S, Date.now()).length + " card" + (C.openCards(S, Date.now()).length === 1 ? "" : "s") + " in.");
+    const side = S.sync.err_out ? "out" : S.sync.err_in ? "in" : null;
+    toast(side ? failName(S.sync["err_" + side], S.sync["err_" + side + "_hint"]) + "." : "Synced — " + (pending().length ? pending().length + " still waiting out, " : "all out, ") + C.openCards(S, Date.now()).length + " card" + (C.openCards(S, Date.now()).length === 1 ? "" : "s") + " in.");
   }
 
   function renderHeld() {

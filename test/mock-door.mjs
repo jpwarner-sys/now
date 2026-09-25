@@ -16,6 +16,10 @@
  *   - GET with no key → "walker-door"
  *   - state.htmlNext = N: the next N POSTs get an HTML error page, as Google serves when it, not the
  *     door, answers (the door's own code answers JSON or an empty body, never a page)
+ *   - state.knockNext = N (of state.knockOp, when set): the POST is 302'd to GET /exec instead of the
+ *     echo — the only way fetch turns a POST into a GET — so doGet answers "walker-door". knockAfter:
+ *     false = doPost never ran (nothing read or written); true = it ran, only the way back went wrong.
+ *     knockDelayMs holds that 302 back, so a knocked request can be made to finish last.
  * mode "v2" adds the proposed ops (DOOR.md §5): it advertises them and takes floor/done/lane,
  * and returns starts and a brief on the pull.
  *
@@ -44,6 +48,11 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     down: false,        // true = drop every connection (network failure)
     delayMs: 0,         // a slow door
     htmlNext: 0,        // the next N POSTs get Google's error page instead of the door's JSON
+    knockNext: 0,       // the next N POSTs (of knockOp, when set) are 302'd to GET /exec instead of the echo —
+    knockOp: null,      //   the only way fetch turns a POST into a GET — so doGet answers "walker-door".
+    knockAfter: false,  //   false: doPost never ran (nothing read or written); true: it ran, only the way back went wrong
+    knockDelayMs: 0,    //   the knocked 302 comes back this late
+    gets: 0,            // GET /exec calls (doGet runs)
     lastFloor: null,
     seen: new Map(),    // receipt_id → first reply (7-day de-dup)
     rate: [],           // accepted dump writes, ms
@@ -162,6 +171,7 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
     if (state.down) { req.socket.destroy(); return; }
     const cors = { "Access-Control-Allow-Origin": "*" };
     if (req.url.startsWith("/exec") && req.method === "GET") {
+      state.gets++;
       res.writeHead(200, { ...cors, "Content-Type": "text/plain" });
       res.end("walker-door");
       return;
@@ -173,8 +183,14 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
       req.on("end", () => {
         const buf = Buffer.concat(chunks);
         state.contentTypes = (state.contentTypes || []).concat(req.headers["content-type"]);
+        let op = "dump";
+        try { op = JSON.parse(buf.toString("utf8")).op || "dump"; } catch {}
+        const knock = state.knockNext > 0 && (!state.knockOp || state.knockOp === op);
+        if (knock) state.knockNext--;
         let out = "";
-        if (state.htmlNext > 0) {                     // Google answered, not the door (the door's code never sends a page)
+        if (knock && !state.knockAfter) {
+          // doPost never runs
+        } else if (state.htmlNext > 0) {                     // Google answered, not the door (the door's code never sends a page)
           state.htmlNext--;
           out = '<!DOCTYPE html><html><head><title>Error</title></head><body><div>Sorry, unable to open the file at this time.</div>' +
             '<p>Please try again: https://door.example.invalid/exec/abcdefghijklmnopqrstuvwx</p></body></html>';
@@ -185,7 +201,7 @@ export function startMockDoor({ key = "test-key", mode = "live" } = {}) {
         }
         const id = "e" + ++seq;
         echoes.set(id, out);
-        setTimeout(() => { res.writeHead(302, { ...cors, Location: "/echo?id=" + id }); res.end(); }, state.delayMs);
+        setTimeout(() => { res.writeHead(302, { ...cors, Location: knock ? "/exec" : "/echo?id=" + id }); res.end(); }, state.delayMs + (knock ? state.knockDelayMs : 0));
       });
       return;
     }
