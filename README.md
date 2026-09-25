@@ -5,7 +5,7 @@ A one-screen phone surface for one person. It does two jobs and nothing else:
 1. **Get things out of your head and into the stack** — a thought, an answer, a floor reading — instantly, with no signal, and never lose one.
 2. **Put what the stack needs from you in front of you** — one card at a time, one thing to do at a time — and nothing else, and nothing at all after 02:00 or on a red floor.
 
-Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.1.1` — if it doesn't, the page is cached and nothing else you are seeing can be trusted.
+Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.1.2` — if it doesn't, the page is cached and nothing else you are seeing can be trusted.
 
 ## The shape of it
 

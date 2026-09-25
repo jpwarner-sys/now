@@ -188,6 +188,13 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   { const st = CORE.emptyStore(); st.sync.ops = ["floor", "done"]; st.sync.door = "walker-door@4";
     CORE.mergePull(st, { ok: true, cards: [] }, "2026-09-24T14:00:00.000Z", { state: "ok" });
     check("STORE", "mergePull: a pull that lists no ops means none (a rolled-back door takes no floor/done/lane)", eq(st.sync.ops, []) && st.sync.door === null, st.sync); }
+  { const st = CORE.emptyStore();
+    Object.assign(st.sync, { err_in: "bad_response", err_in_at: "2026-09-25T03:39:20.000Z", err_in_hint: "HTTP 200: walker-door",
+      err_out: "bad_response", err_out_at: "2026-09-25T03:30:00.000Z", err_out_hint: "HTTP 200: Error Sorry" });
+    CORE.mergePull(st, { ok: true, cards: [] }, "2026-09-25T03:39:40.000Z", { state: "ok" });
+    check("STORE", "mergePull: a good pull clears IN's error, its time and its reply — and leaves OUT's own untouched",
+      st.sync.err_in === null && st.sync.err_in_at === null && st.sync.err_in_hint === null &&
+      st.sync.err_out === "bad_response" && st.sync.err_out_at === "2026-09-25T03:30:00.000Z" && st.sync.err_out_hint === "HTTP 200: Error Sorry", st.sync); }
 
   const now = "2026-09-24T14:00:00.000Z";
   const card = (id, extra) => Object.assign({ id, at: "2026-09-24T12:00:00Z", kind: "WORD", text: "Q " + id, options: ["Yes", "No"], recommend: "Yes", ttl_h: 24 }, extra || {});
