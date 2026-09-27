@@ -389,15 +389,31 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
     check("CARDS", "errors back off 10, 20, 40, 60, 60 then a success returns to 5", eq(seen, [10, 20, 40, 60, 60, 5]), seen);
   }
   {
+    const h = harness(["ok", "ok"]);
+    h.sched.onVisibility("visible");
+    h.c.advance(30 * 1000);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a visible return inside 60s of a good pull does not pull", h.left.length === 1 && h.sched.delayMin() === 5);
+    h.c.advance(30 * 1000);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a visible return after 60s pulls", h.left.length === 0 && h.sched.delayMin() === 5);
+  }
+  {
     const h = harness(["err", "ok"]);
     h.sched.onVisibility("visible");
     check("CARDS", "a failed visible pull backs off to 10", h.sched.delayMin() === 10 && h.left.length === 1);
     h.c.advance(30 * 1000);
     h.sched.onVisibility("visible");
-    check("CARDS", "a visible return inside 60s does not pull", h.left.length === 1 && h.sched.delayMin() === 10);
-    h.c.advance(30 * 1000);
+    check("CARDS", "a failed pull does not count as fresh: a return 30s later tries again, and a success resets to 5 (1.1.5)", h.left.length === 0 && h.sched.delayMin() === 5);
+  }
+  {
+    const h = harness(["ok", "err", "ok"]);
     h.sched.onVisibility("visible");
-    check("CARDS", "a visible return after 60s pulls and a success resets to 5", h.left.length === 0 && h.sched.delayMin() === 5);
+    h.c.advance(20 * 1000);
+    h.sched.start("timer");
+    h.c.advance(10 * 1000);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a failure after a good pull clears its 60s: the return inside it still pulls (1.1.5)", h.left.length === 0 && h.sched.delayMin() === 5);
   }
 }
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-or+czkiXG5qawmXh4aXFs5uIQH0cGUDL4vZt0NqZpIw=' 'sha256-BOfUVaJ4i1uemNgEE44HSBYquqJZVL6pQBQ7oGecLX4='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-UjIRkWA8E/cE5OI1MLkiL/p2rcYMHXksqIgY98cDy7Q=' 'sha256-81TS4lC5M79Cq9slsUj8vrA9PIiHcl8l8JDyGxyve9U='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.4</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.5</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -607,7 +607,8 @@ const CORE = (function () {
 
   /* Card-pull schedule. The pull itself stays pull(); this only decides when.
      Delays are minutes: 5, then 10, 20, 40, 60 after errors, back to 5 after a success.
-     A hidden page keeps no timer. A visible return pulls unless one finished in the last 60s. */
+     A hidden page keeps no timer. A visible return pulls unless a good pull finished in the last 60s:
+     a failed one never stands in for the next, so coming back right after a failure tries again. */
   const CARD_DELAYS = [5, 10, 20, 40, 60];
   function createCardScheduler(io) {
     let delayMin = 5;
@@ -632,7 +633,8 @@ const CORE = (function () {
         const at = CARD_DELAYS.indexOf(delayMin);
         delayMin = CARD_DELAYS[Math.min(CARD_DELAYS.length - 1, (at < 0 ? 0 : at) + 1)];
       }
-      if (outcome === "ok" || outcome === "err") finishedAt = io.now();
+      if (outcome === "ok") finishedAt = io.now();
+      else if (outcome === "err") finishedAt = null;
       arm();
     }
     function fire() {
@@ -670,7 +672,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.4";
+  const BUILD = "1.1.5";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -1562,7 +1564,7 @@ const CORE = (function () {
   });
 
   /* Cards pull on its own clock: every 5 minutes while the page is visible, sooner when you
-     come back unless a pull finished in the last minute, and slower after a bad reply
+     come back unless a good pull finished in the last minute, and slower after a bad reply
      (5, 10, 20, 40, 60 minutes). Hidden: the timer is cleared, so nothing is asked.
      About 12 small requests an hour while visible, none while hidden, fewer during backoff.
      The pull function, the door, the body and the since/merge logic are unchanged. */

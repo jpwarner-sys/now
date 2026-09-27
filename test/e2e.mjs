@@ -600,6 +600,23 @@ await block("coming back while a DUMP is in the air: the cards pull goes now, no
   await p.context().close(); await d.close();
 });
 
+await block("coming back 30 s after a failed pull tries the cards again (1.1.5)", async () => {
+  const d = await startMockDoor({ key: "k-back-after-fail" });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z" });
+  await until(async () => (await store(p)).sync.pulled_at, "first pull finished");
+  await p.clock.fastForward(61000);
+  d.state.down = true;                                    // the next pull meets no signal
+  await p.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await until(async () => (await store(p)).sync.err_in === "network", "the pull failed");
+  d.state.down = false;
+  await p.clock.fastForward(30000);
+  const n = d.state.posts.length;
+  await p.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await until(() => d.state.posts.slice(n).some((x) => x.op === "cards"), "the return pulled again");
+  await until(async () => !(await store(p)).sync.err_in, "IN is clear");
+  await p.context().close(); await d.close();
+});
+
 await block("a DUMP held by a weak signal goes on the 5-minute clock while the app stays open (1.1.4)", async () => {
   const d = await startMockDoor({ key: "k-held-retry" });
   const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z" });
