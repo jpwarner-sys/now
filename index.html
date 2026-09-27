@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-okjO9UOriWcfrOxDSaYu1o+vKK1+jCeHedsTfGAHiGg=' 'sha256-bB9SzvkAGMzqqaS30W/BQ9fkUwdFBNyY9WvKh5zDcmo='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-or+czkiXG5qawmXh4aXFs5uIQH0cGUDL4vZt0NqZpIw=' 'sha256-4RBj7g5UtJ1Z+l01s2mzVH+qyM3ZBQTzBCGIsnPiWNU='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.2</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.3</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -670,7 +670,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.2";
+  const BUILD = "1.1.3";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();

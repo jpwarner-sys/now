@@ -23,9 +23,12 @@ const INDEX = process.env.NOW_INDEX || path.join(ROOT, "index.html");
 let SRC = fs.readFileSync(INDEX, "utf8");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
 /* The page's Content-Security-Policy lets only its own inline scripts run, each pinned by its hash.
-   An edit to either script changes its hash; `node test.js --pin-csp` writes the new ones in. */
+   An edit to either script changes its hash; `node test.js --pin-csp` writes the new ones in.
+   Pages serves the LF bytes git holds, so the pin is taken on LF — a CRLF copy (Windows,
+   core.autocrlf) hashes bytes the phone never gets, and the phone runs no script at all (1.1.3). */
 const scriptHashes = (src) => [...src.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((x) => "'sha256-" + require("crypto").createHash("sha256").update(x[1], "utf8").digest("base64") + "'");
 if (process.argv.includes("--pin-csp")) {
+  SRC = SRC.replace(/\r\n/g, "\n");
   SRC = SRC.replace(/(<meta http-equiv="Content-Security-Policy" content="[^"]*?script-src )[^;]*;/, (_, a) => a + scriptHashes(SRC).join(" ") + ";");
   fs.writeFileSync(INDEX, SRC);
   console.log("CSP pinned: " + scriptHashes(SRC).join(" ") + "\n");
@@ -289,6 +292,8 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   const dir = (d) => ((csp.match(new RegExp("(?:^|;\\s*)" + d + " ([^;]*)")) || [])[1] || "").trim().split(/\s+/).filter(Boolean);
   check("SHIP", "CSP: set in the page, before any script", !!csp && SRC.indexOf("Content-Security-Policy") < SRC.indexOf("<script"));
   check("SHIP", "CSP: only this page's own scripts run — the pinned hashes match (node test.js --pin-csp)", eq(dir("script-src").slice().sort(), scriptHashes(SRC).sort()), { pinned: dir("script-src"), actual: scriptHashes(SRC) });
+  check("SHIP", "CSP: the page is LF, the bytes Pages serves — a CRLF copy pins hashes the phone never sees", !/\r/.test(SRC), (SRC.match(/\r/g) || []).length + " CR");
+  check("SHIP", "CSP: every checkout is LF (.gitattributes eol=lf), so a Windows seat pins what ships", fs.existsSync(path.join(ROOT, ".gitattributes")) && /^\*\s+text=auto\s+eol=lf\s*$/m.test(read(".gitattributes")));
   check("SHIP", "CSP: nothing else by default; no base, no forms, no plugins", eq(dir("default-src"), ["'none'"]) && eq(dir("base-uri"), ["'none'"]) && eq(dir("form-action"), ["'none'"]) && !dir("object-src").length);
   check("SHIP", "CSP: the network is this page and the door (https; plain http only on this machine)", eq(dir("connect-src"), ["'self'", "https:", "http://127.0.0.1:*", "http://localhost:*"]), dir("connect-src"));
   check("SHIP", "no inline event handlers or javascript: URLs (the CSP would block them)", !/<[^>]+\son[a-z]+\s*=/i.test(SRC.replace(/<script[\s\S]*?<\/script>/g, "")) && !/javascript:/i.test(SRC));

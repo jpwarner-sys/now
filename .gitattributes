@@ -1,0 +1,5 @@
+# The page is served byte-for-byte from the repo, and its CSP pins each inline script by the hash
+# of those bytes. A CRLF checkout (Windows, core.autocrlf) hashes different bytes from the LF ones
+# GitHub Pages serves, and every script is blocked. Keep every checkout LF.
+* text=auto eol=lf
+*.png binary

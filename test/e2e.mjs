@@ -26,7 +26,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "applic
 function serveStatic(q, r) {
   let f = path.join(ROOT, decodeURIComponent(q.url.split("?")[0].split("#")[0]));
   if (!f.startsWith(ROOT)) { r.writeHead(403); r.end(); return; }
-  if (f.endsWith("/")) f += "index.html";
+  if (f.endsWith("/") || f.endsWith(path.sep)) f += "index.html";      // path.join gives "\" on Windows
   fs.readFile(f, (e, b) => { if (e) { r.writeHead(404); r.end(); return; } r.writeHead(200, { "Content-Type": TYPES[path.extname(f)] || "application/octet-stream" }); r.end(b); });
 }
 const host = http.createServer(serveStatic);
