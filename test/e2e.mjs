@@ -586,8 +586,9 @@ await block("a queued dump too big for the door is set aside; the queue behind i
 
 await block("coming back while a DUMP is in the air: the cards pull goes now, not after the dump", async () => {
   const d = await startMockDoor({ key: "k-back-inflight" });
-  const p = await keyedPhone(d);
-  await until(() => d.state.posts.some((x) => x.op === "cards"), "first pull");
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z" });
+  await until(async () => (await store(p)).sync.pulled_at, "first pull finished");
+  await p.clock.fastForward(61000);                       // a return pulls only when no pull finished in the last 60 s (job 5)
   d.state.delayMs = 1500;
   const n = d.state.posts.length;
   await dump(p, "slow dump in the air");
@@ -596,6 +597,22 @@ await block("coming back while a DUMP is in the air: the cards pull goes now, no
   await p.waitForTimeout(900);
   assert(d.state.posts.slice(n).some((x) => x.op === "cards"), "the pull went while the dump was still in the air", d.state.posts.slice(n).map((x) => x.op || "dump"));
   d.state.delayMs = 0;
+  await p.context().close(); await d.close();
+});
+
+await block("a DUMP held by a weak signal goes on the 5-minute clock while the app stays open (1.1.4)", async () => {
+  const d = await startMockDoor({ key: "k-held-retry" });
+  const p = await keyedPhone(d, { clockAt: "2026-09-24T16:00:00Z" });
+  await until(() => d.state.posts.some((x) => x.op === "cards"), "first pull");
+  d.state.down = true;                                    // the signal drops; navigator.onLine stays true, so no "online" event
+  await dump(p, "held by a weak signal");
+  await until(async () => { const s = await store(p); return s.outbox.length === 1 && s.sync.err_out === "network"; }, "the dump is held on the phone");
+  d.state.down = false;                                   // the signal is back; nothing on the phone knows yet
+  await p.clock.runFor(4 * 60 * 1000);
+  assert(!d.state.raw.some((r) => r.text === "held by a weak signal"), "nothing retried it before the clock came round");
+  await p.clock.runFor(60 * 1000 + 500);
+  await until(() => d.state.raw.some((r) => r.text === "held by a weak signal"), "the 5-minute clock sent it");
+  await until(async () => (await store(p)).outbox.length === 0, "the outbox is empty");
   await p.context().close(); await d.close();
 });
 

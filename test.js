@@ -288,6 +288,7 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   const sw = read("sw.js");
   check("SHIP", "service worker touches only same-origin GETs", /req\.method !== "GET"/.test(sw) && /url\.origin !== self\.location\.origin/.test(sw));
   check("SHIP", "service worker is registered", /serviceWorker\.register\("sw\.js"\)/.test(SRC));
+  check("SHIP", "the outbox is tried again every 5 minutes while visible — the cards clock only pulls (1.1.4)", /setInterval\(\(\) => \{ if \(document\.visibilityState === "visible" && pending\(\)\.length\) flush\(\["card_answer"\]\)\.then\(\(\) => flush\(\)\); \}, 5 \* 60 \* 1000\);/.test(SRC));
   const csp = (SRC.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/) || [])[1] || "";
   const dir = (d) => ((csp.match(new RegExp("(?:^|;\\s*)" + d + " ([^;]*)")) || [])[1] || "").trim().split(/\s+/).filter(Boolean);
   check("SHIP", "CSP: set in the page, before any script", !!csp && SRC.indexOf("Content-Security-Policy") < SRC.indexOf("<script"));
