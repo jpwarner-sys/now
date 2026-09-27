@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-JHWQ8zPDbWmEEQDx/1CRCk/zsfjGleBAL7rHOu30klo=' 'sha256-a+oUk5SZ61FHDfE780yeMAvwh4V+UO/LN8A4I93cdXA='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-okjO9UOriWcfrOxDSaYu1o+vKK1+jCeHedsTfGAHiGg=' 'sha256-bB9SzvkAGMzqqaS30W/BQ9fkUwdFBNyY9WvKh5zDcmo='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -605,9 +605,64 @@ const CORE = (function () {
       .sort((a, b) => (cardExpired(a, nowMs) - cardExpired(b, nowMs)) || String(a.at || "").localeCompare(String(b.at || "")));
   }
 
+  /* Card-pull schedule. The pull itself stays pull(); this only decides when.
+     Delays are minutes: 5, then 10, 20, 40, 60 after errors, back to 5 after a success.
+     A hidden page keeps no timer. A visible return pulls unless one finished in the last 60s. */
+  const CARD_DELAYS = [5, 10, 20, 40, 60];
+  function createCardScheduler(io) {
+    let delayMin = 5;
+    let timer = null;
+    let finishedAt = null;
+    let inflight = null;
+    let applied = 0;
+    function clear() {
+      if (timer != null) io.clearTimeout(timer);
+      timer = null;
+    }
+    function arm() {
+      clear();
+      if (io.visibility() !== "visible") return;
+      timer = io.setTimeout(fire, delayMin * 60 * 1000);
+    }
+    function apply(outcome, serial) {
+      if (serial === applied) return;
+      applied = serial;
+      if (outcome === "ok") delayMin = 5;
+      else if (outcome === "err") {
+        const at = CARD_DELAYS.indexOf(delayMin);
+        delayMin = CARD_DELAYS[Math.min(CARD_DELAYS.length - 1, (at < 0 ? 0 : at) + 1)];
+      }
+      if (outcome === "ok" || outcome === "err") finishedAt = io.now();
+      arm();
+    }
+    function fire() {
+      timer = null;
+      if (io.visibility() !== "visible") return;
+      start("timer");
+    }
+    function start(reason) {
+      if (reason === "visible" && finishedAt != null && io.now() - finishedAt < 60 * 1000) {
+        arm();
+        return inflight;
+      }
+      if (inflight) return inflight;
+      const result = io.pull();
+      if (result && typeof result.then === "function") {
+        inflight = result.finally(() => { inflight = null; });
+        return inflight;
+      }
+      return result;
+    }
+    function onVisibility(state) {
+      if (state !== "visible") { clear(); return null; }
+      return start("visible");
+    }
+    return { arm: arm, clear: clear, start: start, onVisibility: onVisibility, apply: apply, delayMin: () => delayMin, armed: () => timer != null };
+  }
+
   return { TZ, et, isNight, minutesToCutoff, walkerDay, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
     FLOOR_FRESH_MS, floorFresh, PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, DOOR_MAX_BODY, bodyBytes, dumpWireBytes, LIVE_OPS, canSend,
-    wire, pullBody, classify, errorHint, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope };
+    wire, pullBody, classify, errorHint, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler };
 })();
 </script>
 
@@ -803,8 +858,13 @@ const CORE = (function () {
   /* IN — the pull. The stack answers with the cards waiting on you, and may add
      starts for your NOW list and one line of brief. */
   let pulling = null;
+  let pullResult = "skip";
+  let pullSerial = 0;
+  let cardSched = null;
   function pull() {
     if (pulling) return pulling;
+    const serial = ++pullSerial;
+    pullResult = "skip";
     pulling = (async () => {
       if (!keyed() || C.isNight()) return;
       const f = latestFloor(), at = Date.now(), band = C.floorBand(f, at);
@@ -812,9 +872,10 @@ const CORE = (function () {
         const before = S.sync.ops.join();
         C.mergePull(S, await post(C.pullBody(doorKey(), f, at)), nowIso(), band);
         S.sync.band = band.state;          // the IN lamp says so when the door is holding cards for the floor
+        pullResult = "ok";
         if (S.sync.ops.join() !== before && pending().length) scheduleFlush(0);   // the door just learned an op: send what was parked for it
-      } catch (e) { failed("in", e); }
-    })().finally(() => { pulling = null; commit(); });
+      } catch (e) { failed("in", e); pullResult = "err"; }
+    })().finally(() => { pulling = null; commit(); if (cardSched) cardSched.apply(pullResult, serial); });
     return pulling;
   }
   /* Answers go out before the pull, so the cards that come back already know. Dumps do not change
@@ -1500,15 +1561,27 @@ const CORE = (function () {
     fr.readAsText(f);
   });
 
-  /* When to talk to the stack: at launch, whenever the phone comes back to the app, when the
-     network comes back, every five minutes while it is open, and when a push says so. */
+  /* Cards pull on its own clock: every 5 minutes while the page is visible, sooner when you
+     come back unless a pull finished in the last minute, and slower after a bad reply
+     (5, 10, 20, 40, 60 minutes). Hidden: the timer is cleared, so nothing is asked.
+     About 12 small requests an hour while visible, none while hidden, fewer during backoff.
+     The pull function, the door, the body and the since/merge logic are unchanged. */
+  cardSched = C.createCardScheduler({
+    now: () => Date.now(),
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id),
+    visibility: () => document.visibilityState,
+    pull: () => pull()
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") { endToast(); return; }          // leaving the app ends the UNDO window
-    adoptStored(); render(); sync(); checkBuild();
+    if (document.visibilityState === "hidden") { endToast(); cardSched.clear(); return; }          // leaving the app ends the UNDO window and pauses the card timer
+    adoptStored(); render(); checkBuild();
+    cardSched.onVisibility("visible");
+    const answers = flush(["card_answer"]);
+    answers.then(() => flush());
   });
   window.addEventListener("online", () => sync());
   window.addEventListener("storage", (e) => { if (e.key === K.store && adoptStored()) render(); });
-  setInterval(() => { if (document.visibilityState === "visible") sync(); }, 5 * 60 * 1000);
   setInterval(tickTimer, 500);
   let lastDark = dark(), lastMinute = -1;
   setInterval(() => { const d = dark(), m = new Date().getMinutes(); if (d !== lastDark || m !== lastMinute) { if (lastDark === "night" && !d) sync(); lastDark = d; lastMinute = m; render(); } }, 15000);
