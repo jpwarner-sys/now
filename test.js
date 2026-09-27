@@ -300,6 +300,101 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "every sw.js SHELL path exists on disk", shell.length > 0 && missingShell.length === 0, missingShell);
 }
 
+/* ------------------------------------------------------------------ CARDS schedule */
+{
+  function clock() {
+    let now = 0;
+    const pending = [];
+    return {
+      now: () => now,
+      setTimeout: (fn, ms) => {
+        const id = { fn: fn, at: now + ms, dead: false };
+        pending.push(id);
+        return id;
+      },
+      clearTimeout: (id) => { if (id) id.dead = true; },
+      advance: (ms) => {
+        now += ms;
+        pending.filter((id) => !id.dead && id.at <= now).forEach((id) => { id.dead = true; id.fn(); });
+      },
+      armed: () => pending.filter((id) => !id.dead).length
+    };
+  }
+  function harness(outcomes) {
+    const c = clock();
+    let vis = "visible";
+    let serial = 0;
+    const left = outcomes.slice();
+    let sched;
+    sched = CORE.createCardScheduler({
+      now: c.now,
+      setTimeout: c.setTimeout,
+      clearTimeout: c.clearTimeout,
+      visibility: () => vis,
+      pull: () => {
+        const outcome = left.shift();
+        sched.apply(outcome, ++serial);
+        return outcome;
+      }
+    });
+    return { c: c, sched: sched, setVis: (v) => { vis = v; }, left: left };
+  }
+
+  {
+    const h = harness(["ok"]);
+    h.sched.arm();
+    check("CARDS", "timer armed at 5 minutes", h.c.armed() === 1 && h.sched.delayMin() === 5);
+    h.c.advance(5 * 60 * 1000 - 1);
+    check("CARDS", "timer has not fired early", h.left.length === 1);
+    h.c.advance(1);
+    check("CARDS", "timer fires the pull at 5 minutes", h.left.length === 0 && h.sched.delayMin() === 5);
+  }
+  {
+    const h = harness(["ok"]);
+    h.sched.onVisibility("visible");
+    check("CARDS", "becoming visible pulls at once", h.left.length === 0 && h.sched.delayMin() === 5);
+  }
+  {
+    const h = harness(["ok"]);
+    h.sched.arm();
+    h.sched.onVisibility("hidden");
+    check("CARDS", "hiding clears the timer", h.c.armed() === 0 && h.sched.armed() === false);
+    h.c.advance(10 * 60 * 1000);
+    check("CARDS", "a hidden page does not pull", h.left.length === 1);
+  }
+  {
+    const c = clock();
+    let calls = 0;
+    const sched = CORE.createCardScheduler({
+      now: c.now,
+      setTimeout: c.setTimeout,
+      clearTimeout: c.clearTimeout,
+      visibility: () => "visible",
+      pull: () => { calls++; return new Promise(() => {}); }
+    });
+    const first = sched.start("timer");
+    const second = sched.start("timer");
+    check("CARDS", "a second start does not open another pull", calls === 1 && first === second);
+  }
+  {
+    const h = harness(["err", "err", "err", "err", "err", "ok"]);
+    const seen = [];
+    for (let i = 0; i < 6; i++) { h.sched.start("timer"); seen.push(h.sched.delayMin()); }
+    check("CARDS", "errors back off 10, 20, 40, 60, 60 then a success returns to 5", eq(seen, [10, 20, 40, 60, 60, 5]), seen);
+  }
+  {
+    const h = harness(["err", "ok"]);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a failed visible pull backs off to 10", h.sched.delayMin() === 10 && h.left.length === 1);
+    h.c.advance(30 * 1000);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a visible return inside 60s does not pull", h.left.length === 1 && h.sched.delayMin() === 10);
+    h.c.advance(30 * 1000);
+    h.sched.onVisibility("visible");
+    check("CARDS", "a visible return after 60s pulls and a success resets to 5", h.left.length === 0 && h.sched.delayMin() === 5);
+  }
+}
+
 /* ------------------------------------------------------------------ report */
 let total = 0, bad = 0;
 for (const [g, r] of Object.entries(results)) {
