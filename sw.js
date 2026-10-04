@@ -25,6 +25,16 @@ self.addEventListener("activate", function (e) {
   );
 });
 
+/* Offline fallback. A navigation uses the cached page. Every other miss, and any cache throw,
+   fulfills as a network error so the worker itself never throws. */
+function fromCache(req) {
+  return caches.match(req, { ignoreSearch: true }).then(function (hit) {
+    if (hit) return hit;
+    if (req.mode !== "navigate") return Response.error();
+    return caches.match("index.html").then(function (shell) { return shell || Response.error(); });
+  }).catch(function () { return Response.error(); });
+}
+
 self.addEventListener("fetch", function (e) {
   var req = e.request;
   if (req.method !== "GET") return;
@@ -32,17 +42,24 @@ self.addEventListener("fetch", function (e) {
   if (url.origin !== self.location.origin) return;
   // A navigation revalidates with the server every time (no-cache), so a new build is never hidden
   // behind the browser's HTTP cache and the version tag in the header stays true.
+  // The throw path is narrow. respondWith's promise always fulfills:
+  //   - a good response is returned even if writing the cache throws;
+  //   - a navigation with no network falls back to the cached page, then to a network error only
+  //     when that page is missing too — never to undefined, which throws inside respondWith;
+  //   - anything that is not a navigation, and is not cached, is the one path that fails the
+  //     request (Response.error). A cache read that throws takes that same path, and does not reject.
   e.respondWith(
     fetch(req, req.mode === "navigate" ? { cache: "no-cache" } : undefined)
       .then(function (res) {
-        if (res && res.ok) { var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
+        if (res && res.ok) {
+          var copy = res.clone();
+          // Cache.put throws on a navigate-mode request. Store a plain GET of the same URL.
+          var stored = req.mode === "navigate" ? new Request(req.url) : req;
+          caches.open(CACHE).then(function (c) { return c.put(stored, copy); }).catch(function () {});
+        }
         return res;
       })
-      .catch(function () {
-        return caches.match(req, { ignoreSearch: true }).then(function (hit) {
-          return hit || (req.mode === "navigate" ? caches.match("index.html") : Response.error());
-        });
-      })
+      .catch(function () { return fromCache(req); })
   );
 });
 

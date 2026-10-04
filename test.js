@@ -10,10 +10,12 @@
  *   WIRE      every body the phone sends is exactly the shape the live door takes (DOOR.md).
  *   STORE     a 0.9.x phone migrates with nothing lost; a pull never loses what you did.
  *   CLOCK     the dark window and the cutoff lamp, in Eastern time, both sides of DST.
+ *             The walker day rolls at 02:00 ET, including both DST nights.
  *   CLOCKVEC  contract/clock_vectors.json, the one clock every surface that faces the operator loads (R-096):
- *             the dark window against every vector, the file against an independent derivation, and the
- *             walker's day boundary, which is pending PLAN v2 slice 9 and reported as skipped.
+ *             the dark window and the operator day against every vector, and the file against an
+ *             independent derivation. None of it is skipped.
  *   SHIP      no door URL, key or deployment id anywhere public; one namespace; the build tag.
+ *   SW        the service worker's throw path: a fulfilled response, a cached page, or a network error.
  *
  * The browser half — the real page against a door that behaves like the live one — is
  * test/e2e.mjs.  NOW_INDEX=<path> points this suite at another copy of the page.
@@ -95,6 +97,19 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   const a = CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes" }, "ans-1"), KEY, BUILD);
   check("WIRE", "card_answer: exact field set", eq(Object.keys(a).sort(), ["at", "choice", "id", "key", "op"]), Object.keys(a));
   check("WIRE", "card_answer: id is the card, at is the tap", a.op === "card_answer" && a.id === "c-17" && a.choice === "Yes" && a.at === "2026-09-24T14:00:00.000Z");
+  const ar = CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes", rev: 4 }, "ans-rev"), KEY, BUILD);
+  check("WIRE", "card_answer sends the rev the phone displayed, and nothing else", eq(Object.keys(ar).sort(), ["at", "choice", "id", "key", "op", "rev"]) && ar.rev === 4, ar);
+  check("WIRE", "card_answer: rev 0 is a rev", CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes", rev: 0 }, "ans-0"), KEY, BUILD).rev === 0);
+  check("WIRE", "card_answer: a token rev is sent as itself", CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes", rev: "r2" }, "ans-r"), KEY, BUILD).rev === "r2");
+  const az = CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes", rev: "" }, "ans-e"), KEY, BUILD);
+  check("WIRE", "card_answer omits rev when the card carried none", !("rev" in az) && eq(Object.keys(az).sort(), ["at", "choice", "id", "key", "op"]), az);
+  check("WIRE", "card_answer omits a rev that is not a number or a token", !("rev" in CORE.wire(env("card_answer", { card_id: "c-17", choice: "Yes", rev: { n: 1 } }, "ans-j"), KEY, BUILD)));
+  const shown = { id: "c", text: "old", rev: 1, answered: { choice: "Yes", at: "t", sent: false } };
+  const cleared = CORE.applyAnswerFinal(shown, "stale");
+  check("WIRE", "stale drops the tap so the re-pulled card can show", cleared.answered === null && cleared.rev === 1 && shown.answered.choice === "Yes");
+  const kept = CORE.applyAnswerFinal(shown, "expired");
+  check("WIRE", "a final answer other than stale stays, marked not taken", kept.answered.choice === "Yes" && kept.answered.refused === "expired" && !shown.answered.refused);
+  check("WIRE", "stale is final and asks for a re-pull; expired is final and does not", CORE.classify("stale") === "final" && CORE.answerFollowup("stale").repull === true && CORE.answerFollowup("expired").verdict === "final" && CORE.answerFollowup("expired").repull === false);
 
   const reading = { at: "2026-09-24T13:00:00.000Z", v: { family: 3, energy: 3, recharge: 3, balance: 3, harmony: 3, control: 3 } };
   const NOW = Date.parse("2026-09-24T14:00:00.000Z");          // one hour after the reading
@@ -121,9 +136,18 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("WIRE", "live door takes only dump + card_answer", eq(CORE.LIVE_OPS, ["dump", "card_answer"]));
   check("WIRE", "an unlisted op is never sendable (live door reads it as a dump)", !CORE.canSend("floor", []) && !CORE.canSend("done", null) && !CORE.canSend("lane", ["floor"]));
   check("WIRE", "a listed op is sendable", CORE.canSend("floor", ["floor", "done"]) && CORE.canSend("dump", []));
+  check("WIRE", "the parked cap is 300", CORE.PARKED_CAP === 300);
+  {
+    const box = [{ id: "d", op: "dump" }];
+    for (let i = 0; i < 305; i++) box.push({ id: "p" + i, op: "floor" });
+    const capped = CORE.capParked(box, []);
+    const floors = capped.filter((e) => e.op === "floor");
+    check("WIRE", "past 300 parked, the oldest parked records go and every sendable stays", floors.length === 300 && floors[0].id === "p5" && floors[floors.length - 1].id === "p304" && capped.some((e) => e.op === "dump"), floors.length);
+    check("WIRE", "at the cap, nothing parked is dropped", CORE.capParked(box.slice(0, 301), []).length === 301);
+  }
 
   const verdicts = { network: "stop", offline: "stop", unauthorized: "stop", bad_response: "stop", rate_limited: "stop", server: "stop", write_failed: "stop", http_503: "stop",
-    expired: "final", not_found: "final", choice_invalid: "final", schema_or_origin: "final", receipt_id_invalid: "final", payload_too_large: "final",
+    expired: "final", not_found: "final", choice_invalid: "final", schema_or_origin: "final", receipt_id_invalid: "final", payload_too_large: "final", stale: "final",
     unknown_op: "refused", weird: "retry", "400": "retry" };
   for (const [code, want] of Object.entries(verdicts)) check("WIRE", "classify " + code + " → " + want, CORE.classify(code) === want, CORE.classify(code));
   // A web page where the door's JSON should be: a few plain words, never a link, host or token.
@@ -234,6 +258,16 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("STORE", "pull (proposed): brief cleared", t.brief === null);
   CORE.mergePull(t, { ok: true, cards: [{ text: "no id" }, null] }, now, { state: "thin" });
   check("STORE", "pull: cards without an id are ignored", Object.keys(t.cards).every((k) => k !== "undefined"));
+  {
+    const st = CORE.emptyStore();
+    CORE.mergePull(st, { ok: true, cards: [card("r1", { rev: 2, text: "First" })] }, now, { state: "ok" });
+    check("STORE", "pull keeps the rev the phone will display", st.cards.r1.rev === 2 && st.cards.r1.text === "First");
+    st.cards.r1.answered = { choice: "Yes", at: now, sent: false };
+    CORE.mergePull(st, { ok: true, cards: [card("r1", { rev: 3, text: "Second" })] }, now, { state: "ok" });
+    check("STORE", "a newer pull replaces the displayed rev and keeps the tap", st.cards.r1.rev === 3 && st.cards.r1.text === "Second" && st.cards.r1.answered.choice === "Yes");
+    CORE.mergePull(st, { ok: true, cards: [card("r1", { text: "No rev" })] }, now, { state: "ok" });
+    check("STORE", "a pull that carries no rev leaves none to send", !("rev" in st.cards.r1) && st.cards.r1.text === "No rev");
+  }
 
   const ms = Date.parse(now);
   const u = CORE.emptyStore();
@@ -256,8 +290,12 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("CLOCK", "cutoff lamp 180 min at 23:00", CORE.minutesToCutoff(at("2026-09-25T03:00:00Z")) === 180);
   check("CLOCK", "cutoff lamp 30 min at 01:30", CORE.minutesToCutoff(at("2026-09-25T05:30:00Z")) === 30);
   check("CLOCK", "walker day: 00:30 ET still belongs to the day before", CORE.walkerDay(at("2026-09-25T04:30:00Z")) === "2026-09-24");
-  check("CLOCK", "walker day: 06:00 ET is the new day", CORE.walkerDay(at("2026-09-25T10:00:00Z")) === "2026-09-25");
+  check("CLOCK", "walker day: 01:59 ET still belongs to the day before", CORE.walkerDay(at("2026-09-24T05:59:00Z")) === "2026-09-23");
+  check("CLOCK", "walker day: 02:00 ET is the new day", CORE.walkerDay(at("2026-09-24T06:00:00Z")) === "2026-09-24");
+  check("CLOCK", "walker day: 06:00 ET is that same day", CORE.walkerDay(at("2026-09-24T10:00:00Z")) === "2026-09-24");
   check("CLOCK", "walker day: 23:59 ET is still today", CORE.walkerDay(at("2026-09-25T03:59:00Z")) === "2026-09-24");
+  check("CLOCK", "spring-forward night: 01:59 EST is the day before and 03:00 EDT is the new day", CORE.walkerDay(at("2026-03-08T06:59:59Z")) === "2026-03-07" && CORE.walkerDay(at("2026-03-08T07:00:00Z")) === "2026-03-08");
+  check("CLOCK", "fall-back night: both 01:59 hours are the day before and 02:00 EST is the new day", CORE.walkerDay(at("2026-11-01T05:59:59Z")) === "2026-10-31" && CORE.walkerDay(at("2026-11-01T06:59:59Z")) === "2026-10-31" && CORE.walkerDay(at("2026-11-01T07:00:00Z")) === "2026-11-01");
   check("CLOCK", "fall-back night: at 00:30 EDT the cutoff is 150 real minutes away, not 90", CORE.minutesToCutoff(at("2026-11-01T04:30:00Z")) === 150, CORE.minutesToCutoff(at("2026-11-01T04:30:00Z")));
   check("CLOCK", "spring-forward night: at 01:30 EST the cutoff is 30 minutes away", CORE.minutesToCutoff(at("2026-03-08T06:30:00Z")) === 30, CORE.minutesToCutoff(at("2026-03-08T06:30:00Z")));
   check("CLOCK", "ET day rolls at ET midnight", CORE.et(at("2026-09-25T03:59:00Z")).day === "2026-09-24" && CORE.et(at("2026-09-25T04:00:00Z")).day === "2026-09-25");
@@ -270,8 +308,8 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
 /* ------------------------------------------------------------------ CLOCKVEC */
 /* contract/clock_vectors.json is the one clock every surface that faces the operator loads (R-096): UTC instants and
    what America/Toronto answers for each — dark, and the operator day, which rolls at 02:00 ET on the wall clock (R-068).
-   The walker's dark window must match every vector now. Its day boundary still rolls at 06:00 until PLAN v2 slice 9,
-   so that one check is pending: reported as skipped with its reason, and a ratchet fails the day the flag goes stale. */
+   The walker's dark window and its day boundary both match every vector. WALKER_DAY_PENDING stays in the file so a
+   later edit that sets it back to true, while walkerDay already agrees, fails the ratchet instead of skipping. */
 {
   const G = "CLOCKVEC";
   const raw = read("contract/clock_vectors.json");
@@ -321,10 +359,9 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   /* the walker's CURRENT dark window, against every vector */
   for (const c of cases) check(G, "dark · " + c.name, CORE.isNight(when(c)) === c.dark, { at: c.at, expected: c.dark, got: CORE.isNight(when(c)) });
 
-  /* PENDING — PLAN v2 slice 9, ruling D (R-096 section 3): the walker's day boundary moves from 06:00 to 02:00 ET (walkerDay in
-     index.html). Until that PR lands the check is skipped, not failed. That PR sets WALKER_DAY_PENDING to false; the ratchet
-     below fails the day walkerDay already agrees with every vector while the flag is still set, so the skip cannot be forgotten. */
-  const WALKER_DAY_PENDING = true;
+  /* The day boundary moved to 02:00 ET in this same change (R-096 section 3). The flag is false, so every
+     operator_day vector is checked. If the flag is set again while walkerDay already agrees, the ratchet fails. */
+  const WALKER_DAY_PENDING = false;
   const dayMiss = cases.filter((c) => CORE.walkerDay(when(c)) !== c.operator_day);
   if (WALKER_DAY_PENDING) {
     check(G, "pending flag is current: the walker's day still differs from the vectors", dayMiss.length > 0, "walkerDay now agrees with all " + cases.length + " operator_day vectors — set WALKER_DAY_PENDING = false so the day check runs for real");
@@ -364,6 +401,11 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "raw door fields present", SRC.includes('id="doorUrlBox"') && SRC.includes('id="doorKeyBox"'));
   const sw = read("sw.js");
   check("SHIP", "service worker touches only same-origin GETs", /req\.method !== "GET"/.test(sw) && /url\.origin !== self\.location\.origin/.test(sw));
+  check("SHIP", "service worker throw path fulfills: shell fallback, else a network error, and a navigate request is not what gets cached", /function fromCache\(req\)/.test(sw) && /return shell \|\| Response\.error\(\)/.test(sw) && /caches\.open\(CACHE\)\.then\(function \(c\) \{ return c\.put\(stored, copy\); \}\)\.catch\(function \(\) \{\}\)/.test(sw) && /req\.mode === "navigate" \? new Request\(req\.url\) : req/.test(sw));
+  check("SHIP", "a tap sends the rev the card was showing, and only then", /const rev = C\.shownRev\(live\.rev\)/.test(SRC) && /if \(rev !== undefined\) body\.rev = rev/.test(SRC));
+  check("SHIP", "a stale answer re-pulls", /if \(C\.answerFollowup\(code\)\.repull\) pull\(\)/.test(SRC));
+  check("SHIP", "the door line shows parked N of the cap", /parked <b>" \+ parkedOut\(\)\.length \+ "<\/b> of " \+ C\.PARKED_CAP/.test(SRC) && /parked " \+ parked \+ " of " \+ C\.PARKED_CAP/.test(SRC));
+  check("SHIP", "parked records are capped by the named cap", /C\.capParked\(S\.outbox, S\.sync\.ops\)/.test(SRC) && !/length - 300/.test(SRC));
   check("SHIP", "service worker is registered", /serviceWorker\.register\("sw\.js"\)/.test(SRC));
   check("SHIP", "the outbox is tried again every 5 minutes while visible — the cards clock only pulls (1.1.4)", /setInterval\(\(\) => \{ if \(document\.visibilityState === "visible" && pending\(\)\.length\) flush\(\["card_answer"\]\)\.then\(\(\) => flush\(\)\); \}, 5 \* 60 \* 1000\);/.test(SRC));
   const csp = (SRC.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/) || [])[1] || "";
@@ -494,16 +536,180 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   }
 }
 
-/* ------------------------------------------------------------------ report */
-let total = 0, bad = 0;
-for (const [g, r] of Object.entries(results)) {
-  const n = r.pass + r.fail.length;
-  const sk = skipped.filter((s) => s.group === g);
-  total += n; bad += r.fail.length;
-  console.log((g + "        ").slice(0, 9) + " " + r.pass + "/" + n + (r.fail.length ? "   FAIL" : "") + (sk.length ? "   (" + sk.length + " skipped)" : ""));
-  for (const f of r.fail) console.log("   ✗ " + f);
-  for (const s of sk) console.log("   ~ skipped: " + s.name + " — " + s.why);
+/* ------------------------------------------------------------------ SW */
+/* Loads the shipped sw.js and fires fetch events at it. Origins are written as "host|path" so this
+   file carries no URL. The worker's own URL parser is the one under test, swapped in here. */
+function finishSuite() {
+  let total = 0, bad = 0;
+  for (const [g, r] of Object.entries(results)) {
+    const n = r.pass + r.fail.length;
+    const sk = skipped.filter((s) => s.group === g);
+    total += n; bad += r.fail.length;
+    console.log((g + "        ").slice(0, 9) + " " + r.pass + "/" + n + (r.fail.length ? "   FAIL" : "") + (sk.length ? "   (" + sk.length + " skipped)" : ""));
+    for (const f of r.fail) console.log("   ✗ " + f);
+    for (const s of sk) console.log("   ~ skipped: " + s.name + " — " + s.why);
+  }
+  const c = results.CONTRACT || { pass: 0, fail: [] };
+  console.log("\nTOTAL " + (total - bad) + "/" + total + (skipped.length ? " (" + skipped.length + " skipped)" : "") + (bad ? "  — FAILED" : "  — the port agrees with the brain (" + c.pass + " contract cases), and the wire matches the door"));
+  process.exit(bad ? 1 : 0);
 }
-const c = results.CONTRACT || { pass: 0, fail: [] };
-console.log("\nTOTAL " + (total - bad) + "/" + total + (skipped.length ? " (" + skipped.length + " skipped)" : "") + (bad ? "  — FAILED" : "  — the port agrees with the brain (" + c.pass + " contract cases), and the wire matches the door"));
-process.exit(bad ? 1 : 0);
+
+(async function () {
+  function HostURL(input) {
+    const s = String(input);
+    const cut = s.indexOf("|");
+    if (cut < 0) throw new TypeError("not a url");
+    this.origin = s.slice(0, cut);
+    this.pathname = s.slice(cut + 1) || "/";
+    this.search = "";
+    this.href = s;
+  }
+  function HostRequest(input, init) {
+    if (input && typeof input === "object" && input.url) {
+      this.url = input.url;
+      this.method = input.method || "GET";
+      this.mode = input.mode || "cors";
+    } else {
+      this.url = String(input);
+      this.method = (init && init.method) || "GET";
+      this.mode = (init && init.mode) || "cors";
+    }
+  }
+  function makeCaches() {
+    const store = new Map();
+    const api = {
+      puts: [],
+      matches: [],
+      failPut: false,
+      failMatch: false,
+      open() {
+        return Promise.resolve({
+          put(req, res) {
+            const url = req && req.url ? req.url : String(req);
+            api.puts.push({ url: url, mode: req && req.mode ? req.mode : "" });
+            if (api.failPut) return Promise.reject(new TypeError("put"));
+            store.set(String(url).split("?")[0], res);
+            return Promise.resolve();
+          },
+          addAll() { return Promise.resolve(); },
+        });
+      },
+      match(req, opts) {
+        api.matches.push(opts || null);
+        if (api.failMatch) return Promise.reject(new TypeError("match"));
+        const raw = typeof req === "string" ? req : req.url;
+        const key = String(raw).split("?")[0];
+        return Promise.resolve(store.has(key) ? store.get(key) : undefined);
+      },
+      seed(url, body) { store.set(url, new Response(body, { status: 200 })); },
+      keys() { return Promise.resolve([...store.keys()]); },
+      delete() { return Promise.resolve(true); },
+    };
+    return api;
+  }
+  function load(caches, fetchImpl) {
+    const listeners = {};
+    const self = {
+      location: { origin: "walker.test" },
+      addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+      skipWaiting() { return Promise.resolve(); },
+      clients: {
+        matchAll() { return Promise.resolve([]); },
+        claim() { return Promise.resolve(); },
+        openWindow() { return Promise.resolve(); },
+      },
+      registration: { showNotification() { return Promise.resolve(); } },
+    };
+    new Function("self", "caches", "fetch", "Response", "URL", "Request", read("sw.js"))(self, caches, fetchImpl, Response, HostURL, HostRequest);
+    return listeners;
+  }
+  function fire(listeners, req) {
+    let out;
+    const ev = { request: req, respondWith(p) { out = p; }, waitUntil() {} };
+    (listeners.fetch || []).forEach((fn) => fn(ev));
+    return out;
+  }
+  const ask = (method, url, mode) => ({ method: method, url: url, mode: mode || "cors" });
+  const isErr = (res) => res instanceof Response && res.type === "error" && res.status === 0;
+  async function settle(p) {
+    if (!p || typeof p.then !== "function") return { called: false };
+    try { return { called: true, res: await p }; }
+    catch (e) { return { called: true, err: e }; }
+  }
+
+  {
+    const calls = [];
+    const listeners = load(makeCaches(), (r, init) => { calls.push(init); return Promise.resolve(new Response("x")); });
+    const out = fire(listeners, ask("POST", "walker.test|/", "cors"));
+    check("SW", "a non-GET never reaches the network", out === undefined && calls.length === 0);
+    const out2 = fire(listeners, ask("GET", "elsewhere.test|/index.html", "navigate"));
+    check("SW", "another origin is left alone", out2 === undefined && calls.length === 0);
+  }
+  {
+    let init;
+    const caches = makeCaches();
+    const listeners = load(caches, (r, opts) => { init = opts; return Promise.resolve(new Response("page", { status: 200 })); });
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    await new Promise((r) => setTimeout(r, 0));
+    check("SW", "a navigation revalidates, and the response comes back", got.called && !got.err && init && init.cache === "no-cache" && await got.res.text() === "page");
+    check("SW", "a navigation is cached as a plain GET, not a navigate request", caches.puts.length === 1 && caches.puts[0].mode !== "navigate" && caches.puts[0].url === "walker.test|/");
+  }
+  {
+    const caches = makeCaches();
+    caches.failPut = true;
+    const unhandled = [];
+    const onRej = (e) => { unhandled.push(e); };
+    process.on("unhandledRejection", onRej);
+    const listeners = load(caches, () => Promise.resolve(new Response("page", { status: 200 })));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    await new Promise((r) => setTimeout(r, 20));
+    process.removeListener("unhandledRejection", onRej);
+    check("SW", "a cache write that throws still returns the page and does not reject", got.called && !got.err && await got.res.text() === "page" && unhandled.length === 0, unhandled.length);
+  }
+  {
+    const caches = makeCaches();
+    caches.seed("index.html", "SHELL");
+    const listeners = load(caches, () => Promise.resolve(new Response("missing", { status: 404 })));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    check("SW", "an HTTP error is not a throw: it is returned, not the shell, and not cached", got.called && !got.err && got.res.status === 404 && caches.puts.length === 0);
+  }
+  {
+    const caches = makeCaches();
+    caches.seed("index.html", "SHELL");
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    check("SW", "offline navigation falls back to the cached page", got.called && !got.err && got.res.ok && await got.res.text() === "SHELL");
+    check("SW", "the fallback matches ignoring the query", caches.matches.some((o) => o && o.ignoreSearch === true));
+  }
+  {
+    const caches = makeCaches();
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    check("SW", "offline navigation with no cached page fulfills as a network error and does not reject", got.called && !got.err && isErr(got.res));
+  }
+  {
+    const caches = makeCaches();
+    caches.seed("walker.test|/icon.svg", "ICON");
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/icon.svg?v=2", "cors")));
+    check("SW", "offline, a cached file is served and the query is ignored", got.called && !got.err && await got.res.text() === "ICON");
+  }
+  {
+    const caches = makeCaches();
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/icon.svg", "cors")));
+    check("SW", "offline, a file that was never cached is a network error and does not reject", got.called && !got.err && isErr(got.res));
+  }
+  {
+    const caches = makeCaches();
+    caches.failMatch = true;
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
+    check("SW", "a cache read that throws still fulfills as a network error", got.called && !got.err && isErr(got.res));
+  }
+
+  finishSuite();
+})().catch((e) => {
+  console.log("FAIL: SW " + (e && e.stack ? e.stack : e));
+  process.exit(1);
+});

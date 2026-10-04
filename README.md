@@ -74,7 +74,7 @@ A service worker (`sw.js`) keeps the page openable with no signal. It only ever 
 ## Tests
 
 ```
-node test.js          # no dependencies — 191 checks
+node test.js          # no dependencies — 314 checks
 node test.js --pin-csp  # after editing either script: re-pin their hashes in the CSP
 node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 48 scenarios
 ```
