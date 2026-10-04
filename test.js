@@ -10,6 +10,9 @@
  *   WIRE      every body the phone sends is exactly the shape the live door takes (DOOR.md).
  *   STORE     a 0.9.x phone migrates with nothing lost; a pull never loses what you did.
  *   CLOCK     the dark window and the cutoff lamp, in Eastern time, both sides of DST.
+ *   CLOCKVEC  contract/clock_vectors.json, the one clock every surface that faces the operator loads (R-096):
+ *             the dark window against every vector, the file against an independent derivation, and the
+ *             walker's day boundary, which is pending PLAN v2 slice 9 and reported as skipped.
  *   SHIP      no door URL, key or deployment id anywhere public; one namespace; the build tag.
  *
  * The browser half — the real page against a door that behaves like the live one — is
@@ -38,6 +41,13 @@ const results = {};
 function check(group, name, ok, detail) {
   const g = (results[group] = results[group] || { pass: 0, fail: [] });
   if (ok) g.pass++; else g.fail.push(detail === undefined ? name : name + " — " + JSON.stringify(detail));
+}
+/* A check that cannot be asked yet. It is neither a pass nor a failure: it is counted and printed on its own, with
+   its reason, so a skip never passes for a green check and never fails a suite that is honest about it. */
+const skipped = [];
+function skip(group, name, why) {
+  results[group] = results[group] || { pass: 0, fail: [] };
+  skipped.push({ group, name, why });
 }
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -257,9 +267,76 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("CLOCK", "lane streak: today untouched does not break it", CORE.laneStreak({ "2026-09-23": { laundry: true } }, "laundry", "2026-09-24") === 1);
 }
 
+/* ------------------------------------------------------------------ CLOCKVEC */
+/* contract/clock_vectors.json is the one clock every surface that faces the operator loads (R-096): UTC instants and
+   what America/Toronto answers for each — dark, and the operator day, which rolls at 02:00 ET on the wall clock (R-068).
+   The walker's dark window must match every vector now. Its day boundary still rolls at 06:00 until PLAN v2 slice 9,
+   so that one check is pending: reported as skipped with its reason, and a ratchet fails the day the flag goes stale. */
+{
+  const G = "CLOCKVEC";
+  const raw = read("contract/clock_vectors.json");
+  const cv = JSON.parse(raw);
+  const cases = Array.isArray(cv.cases) ? cv.cases : [];
+  const when = (c) => new Date(c.at);
+  const p2 = (n) => String(n).padStart(2, "0");
+
+  /* the file itself */
+  const KEYS = ["name", "at", "et", "dark", "operator_day", "note"];
+  const malformed = cases.filter((c) => !(typeof c.name === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(c.at) && typeof c.et === "string" && typeof c.dark === "boolean" && /^\d{4}-\d\d-\d\d$/.test(c.operator_day) && Object.keys(c).every((k) => KEYS.includes(k)))).map((c) => c.name);
+  check(G, "file: zone America/Toronto; every case is a name, a UTC instant, an ET label, dark and operator_day (a note at most)", cv.zone === "America/Toronto" && cases.length >= 20 && malformed.length === 0, malformed);
+  check(G, "file: every instant and every name is unique", new Set(cases.map((c) => c.at)).size === cases.length && new Set(cases.map((c) => c.name)).size === cases.length);
+  check(G, "file: no URL anywhere in it", !/:\/\//.test(raw));
+
+  /* An independent derivation of the same answers: the US/Canada DST rule from first principles (2nd Sunday of March at
+     02:00 EST to 1st Sunday of November at 02:00 EDT), with no Intl and no tz database, so the file is not checked by
+     the clock it describes. The wall clock is read off a shifted Date with getUTC*. */
+  const nthSunday = (y, mon, n) => 1 + ((7 - new Date(Date.UTC(y, mon, 1)).getUTCDay()) % 7) + 7 * (n - 1);
+  const ymd = (d) => d.getUTCFullYear() + "-" + p2(d.getUTCMonth() + 1) + "-" + p2(d.getUTCDate());
+  function oracle(iso) {
+    const ms = Date.parse(iso), y = new Date(ms).getUTCFullYear();
+    const dst = ms >= Date.UTC(y, 2, nthSunday(y, 2, 2), 7) && ms < Date.UTC(y, 10, nthSunday(y, 10, 1), 6);
+    const w = new Date(ms + (dst ? -4 : -5) * 3600e3), h = w.getUTCHours();
+    return { et: ymd(w) + " " + p2(h) + ":" + p2(w.getUTCMinutes()) + ":" + p2(w.getUTCSeconds()) + (dst ? " EDT" : " EST"), dark: h >= 2 && h < 6, operator_day: h < 2 ? ymd(new Date(w.getTime() - 864e5)) : ymd(w) };
+  }
+  const offFile = cases.filter((c) => { const o = oracle(c.at); return o.et !== c.et || o.dark !== c.dark || o.operator_day !== c.operator_day; }).map((c) => c.name);
+  check(G, "file: every et, dark and operator_day agrees with an independent derivation of the ET wall clock", offFile.length === 0, offFile);
+
+  /* required coverage, so a vector cannot be dropped quietly: both edges on an ordinary EDT day and an ordinary EST day,
+     and both DST nights (spring has no 02:xx, so its 02:00 edge is the 03:00:00 EDT that follows the jump; fall has two 01:xx hours) */
+  const need = [];
+  for (const [day, z] of [["2026-09-24", "EDT"], ["2026-12-01", "EST"]]) for (const t of ["01:59:59", "02:00:00", "05:59:59", "06:00:00"]) need.push(day + " " + t + " " + z);
+  need.push("2026-03-08 01:59:59 EST", "2026-03-08 03:00:00 EDT", "2026-03-08 05:59:59 EDT", "2026-03-08 06:00:00 EDT",
+    "2026-11-01 01:59:59 EDT", "2026-11-01 01:00:00 EST", "2026-11-01 01:59:59 EST", "2026-11-01 02:00:00 EST", "2026-11-01 05:59:59 EST", "2026-11-01 06:00:00 EST");
+  const missing = need.filter((e) => !cases.some((c) => c.et === e));
+  check(G, "file: both edges on an ordinary EDT day, an ordinary EST day and both 2026 DST nights are all there", missing.length === 0, missing);
+
+  /* the point of the file: a surface that stores 06:00Z or 07:00Z — a fixed UTC hour — fails at least one vector */
+  for (const h0 of [6, 7]) {
+    const fixedDark = (c) => { const h = when(c).getUTCHours(); return h >= h0 && h < h0 + 4; };
+    const fixedDay = (c) => new Date(when(c).getTime() - h0 * 3600e3).toISOString().slice(0, 10);
+    check(G, "teeth: a dark window fixed at " + p2(h0) + ":00Z fails a vector", cases.some((c) => fixedDark(c) !== c.dark));
+    check(G, "teeth: a day boundary fixed at " + p2(h0) + ":00Z fails a vector", cases.some((c) => fixedDay(c) !== c.operator_day));
+  }
+
+  /* the walker's CURRENT dark window, against every vector */
+  for (const c of cases) check(G, "dark · " + c.name, CORE.isNight(when(c)) === c.dark, { at: c.at, expected: c.dark, got: CORE.isNight(when(c)) });
+
+  /* PENDING — PLAN v2 slice 9, ruling D (R-096 section 3): the walker's day boundary moves from 06:00 to 02:00 ET (walkerDay in
+     index.html). Until that PR lands the check is skipped, not failed. That PR sets WALKER_DAY_PENDING to false; the ratchet
+     below fails the day walkerDay already agrees with every vector while the flag is still set, so the skip cannot be forgotten. */
+  const WALKER_DAY_PENDING = true;
+  const dayMiss = cases.filter((c) => CORE.walkerDay(when(c)) !== c.operator_day);
+  if (WALKER_DAY_PENDING) {
+    check(G, "pending flag is current: the walker's day still differs from the vectors", dayMiss.length > 0, "walkerDay now agrees with all " + cases.length + " operator_day vectors — set WALKER_DAY_PENDING = false so the day check runs for real");
+    if (dayMiss.length) skip(G, "walker day = operator_day on every vector", "PENDING PLAN v2 slice 9 + ruling D (R-096 section 3): walkerDay still rolls at 06:00, " + dayMiss.length + " of " + cases.length + " vectors differ today");
+  } else {
+    for (const c of cases) check(G, "operator day · " + c.name, CORE.walkerDay(when(c)) === c.operator_day, { at: c.at, expected: c.operator_day, got: CORE.walkerDay(when(c)) });
+  }
+}
+
 /* ------------------------------------------------------------------ SHIP */
 {
-  const shipped = { "index.html": SRC, "sw.js": read("sw.js"), "README.md": read("README.md"), "DOOR.md": read("DOOR.md"), "RECONCILIATION.md": read("RECONCILIATION.md"), "manifest.webmanifest": read("manifest.webmanifest") };
+  const shipped = { "index.html": SRC, "sw.js": read("sw.js"), "README.md": read("README.md"), "DOOR.md": read("DOOR.md"), "RECONCILIATION.md": read("RECONCILIATION.md"), "manifest.webmanifest": read("manifest.webmanifest"), "contract/clock_vectors.json": read("contract/clock_vectors.json") };
   for (const [name, blob] of Object.entries(shipped)) {
     check("SHIP", name + ": no Apps Script host", !/script\.google(usercontent)?\.com/i.test(blob));
     check("SHIP", name + ": no deployment id", !/AKfycb/.test(blob));
@@ -421,10 +498,12 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
 let total = 0, bad = 0;
 for (const [g, r] of Object.entries(results)) {
   const n = r.pass + r.fail.length;
+  const sk = skipped.filter((s) => s.group === g);
   total += n; bad += r.fail.length;
-  console.log((g + "        ").slice(0, 9) + " " + r.pass + "/" + n + (r.fail.length ? "   FAIL" : ""));
+  console.log((g + "        ").slice(0, 9) + " " + r.pass + "/" + n + (r.fail.length ? "   FAIL" : "") + (sk.length ? "   (" + sk.length + " skipped)" : ""));
   for (const f of r.fail) console.log("   ✗ " + f);
+  for (const s of sk) console.log("   ~ skipped: " + s.name + " — " + s.why);
 }
 const c = results.CONTRACT || { pass: 0, fail: [] };
-console.log("\nTOTAL " + (total - bad) + "/" + total + (bad ? "  — FAILED" : "  — the port agrees with the brain (" + c.pass + " contract cases), and the wire matches the door"));
+console.log("\nTOTAL " + (total - bad) + "/" + total + (skipped.length ? " (" + skipped.length + " skipped)" : "") + (bad ? "  — FAILED" : "  — the port agrees with the brain (" + c.pass + " contract cases), and the wire matches the door"));
 process.exit(bad ? 1 : 0);
