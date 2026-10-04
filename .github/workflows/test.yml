@@ -1,0 +1,35 @@
+# The walker's whole offline suite, run on every pull request and on every push to main (PLAN v2
+# slice 8). `node test.js` has no dependencies and no build, reads the repo and writes nothing, so
+# this job cannot change a served byte. The browser suite (test/e2e.mjs) needs Playwright and a
+# browser and stays a local run.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node test.js
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # An LTS line, the same major as the PC the walker is built on. Moving it is a decision.
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Run the suite
+        run: node test.js
