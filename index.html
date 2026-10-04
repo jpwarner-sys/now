@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-UjIRkWA8E/cE5OI1MLkiL/p2rcYMHXksqIgY98cDy7Q=' 'sha256-81TS4lC5M79Cq9slsUj8vrA9PIiHcl8l8JDyGxyve9U='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-TXj/A51edmjF85DyG8vyWVgZSYwXYsgW+4z/7MoCiq8=' 'sha256-gyTS0PcSgT76w6aVTd9BF6WgYV2KHUNnyvD0crvPm/A='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -179,7 +179,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.5</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.6</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -317,9 +317,10 @@ const CORE = (function () {
     for (let m = 1; m <= 240; m++) if (isNight(new Date(d.getTime() + m * 60000))) return m;
     return null;
   }
-  /* The walker's day runs from the 02:00 cutoff, not from midnight (R-068): what you do at 00:30
-     still belongs to the day before. 02:00–05:59 is dark, so nothing can land there anyway. */
-  function walkerDay(d) { const p = et(d); return p.hour < 6 ? shiftDay(p.day, -1) : p.day; }
+  /* The walker's day rolls at 02:00 ET, the estate's one boundary (R-068, R-096 §3), read off the
+     America/Toronto wall clock. 00:30 still belongs to the day before. 02:00 is the new day, and
+     it is also when the dark window starts, so nothing is sent in 02:00–05:59. */
+  function walkerDay(d) { const p = et(d); return p.hour < 2 ? shiftDay(p.day, -1) : p.day; }
   function shiftDay(ymd, n) { const a = ymd.split("-").map(Number); const t = new Date(Date.UTC(a[0], a[1] - 1, a[2]) + n * 86400000); return t.toISOString().slice(0, 10); }
   function dow(ymd) { const a = ymd.split("-").map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])).getUTCDay(); }
 
@@ -440,7 +441,14 @@ const CORE = (function () {
   function wire(env, key, build) {
     const b = env.body || {};
     if (env.op === "dump") return { key: key, text: String(b.text || ""), receipt_id: env.id, schema: DUMP_SCHEMA, origin_surface: ORIGIN, surface_version: build };
-    if (env.op === "card_answer") return { op: "card_answer", key: key, id: b.card_id, choice: b.choice, at: env.at };
+    if (env.op === "card_answer") {
+      // Send the rev the phone was showing. Omit it when the card carried none, so a door that
+      // has no rev yet (today) still takes the answer, and a later door can see what was displayed.
+      const out = { op: "card_answer", key: key, id: b.card_id, choice: b.choice, at: env.at };
+      const rev = shownRev(b.rev);
+      if (rev !== undefined) out.rev = rev;
+      return out;
+    }
     return Object.assign({}, b, { op: env.op, key: key, event_id: env.id, at: env.at, origin_surface: ORIGIN });   // the envelope's own fields always win over its body
   }
   /* The pull always asks from "0": the whole open set, every time. The door compares
@@ -455,7 +463,7 @@ const CORE = (function () {
      final — this envelope will never be taken as it is; retrying cannot help.
      refused — the door does not know this op.
      retry — keep it, try it next round. */
-  const FINAL = ["expired", "not_found", "choice_invalid", "choice_required", "id_required", "schema_or_origin", "receipt_id_required", "receipt_id_invalid", "surface_version_invalid", "payload_too_large"];
+  const FINAL = ["expired", "not_found", "choice_invalid", "choice_required", "id_required", "schema_or_origin", "receipt_id_required", "receipt_id_invalid", "surface_version_invalid", "payload_too_large", "stale"];
   const STOP = ["network", "offline", "unauthorized", "no_door", "bad_response", "rate_limited", "server", "write_failed"];
   function classify(code) {
     code = String(code || "");
@@ -575,7 +583,12 @@ const CORE = (function () {
       if (!id) continue;
       seen[id] = true;
       const prev = s.cards[id] || {};
-      s.cards[id] = Object.assign({}, prev, c, { id: id, at: isoOr(c.at, prev.at || nowIso), answered: prev.answered || null, later: !!prev.later, dismissed: !!prev.dismissed, seen_at: prev.seen_at || nowIso });
+      const next = Object.assign({}, prev, c, { id: id, at: isoOr(c.at, prev.at || nowIso), answered: prev.answered || null, later: !!prev.later, dismissed: !!prev.dismissed, seen_at: prev.seen_at || nowIso });
+      // The rev on the card is the one the phone is showing. A pull that carries none (a door
+      // with no rev yet) must not keep an older one, or the next tap would send a rev that door never gave.
+      const rev = shownRev(c.rev);
+      if (rev === undefined) delete next.rev; else next.rev = rev;
+      s.cards[id] = next;
     }
     const whole = !band || band.state === "ok" || band.state === "unknown";
     if (whole) for (const id in s.cards) if (!seen[id] && !s.cards[id].answered) delete s.cards[id];
@@ -662,9 +675,39 @@ const CORE = (function () {
     return { arm: arm, clear: clear, start: start, onVisibility: onVisibility, apply: apply, delayMin: () => delayMin, armed: () => timer != null };
   }
 
+  /* A rev is a finite number, or a short token. Anything else is not a rev the phone will send. */
+  function shownRev(v) {
+    if (typeof v === "number" && isFinite(v)) return v;
+    if (typeof v === "string" && v.length > 0 && v.length <= 64 && /^[A-Za-z0-9._-]+$/.test(v)) return v;
+    return undefined;
+  }
+  /* stale means the card changed after it was shown. The old tap is final (do not retry it) and the
+     phone pulls again so the new text is what gets answered. Every other final word just stops. */
+  function answerFollowup(code) {
+    code = String(code || "");
+    return { verdict: classify(code), repull: code === "stale" };
+  }
+  function applyAnswerFinal(card, code) {
+    if (!card) return card;
+    if (String(code || "") === "stale") return Object.assign({}, card, { answered: null });
+    if (!card.answered) return card;
+    return Object.assign({}, card, { answered: Object.assign({}, card.answered, { refused: String(code || "") }) });
+  }
+  /* Unsendable envelopes wait on the phone, oldest first, and never past this many. The count is shown. */
+  const PARKED_CAP = 300;
+  function capParked(outbox, advertised) {
+    const list = Array.isArray(outbox) ? outbox.slice() : [];
+    const parked = list.filter((e) => e && !canSend(e.op, advertised));
+    if (parked.length <= PARKED_CAP) return list;
+    const drop = {};
+    parked.slice(0, parked.length - PARKED_CAP).forEach((e) => { if (e && e.id) drop[e.id] = 1; });
+    return list.filter((e) => !(e && drop[e.id]));
+  }
+
   return { TZ, et, isNight, minutesToCutoff, walkerDay, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
     FLOOR_FRESH_MS, floorFresh, PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, DOOR_MAX_BODY, bodyBytes, dumpWireBytes, LIVE_OPS, canSend,
-    wire, pullBody, classify, errorHint, doorUrlProblem, emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler };
+    wire, pullBody, classify, errorHint, doorUrlProblem, shownRev, answerFollowup, applyAnswerFinal, PARKED_CAP, capParked,
+    emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler };
 })();
 </script>
 
@@ -672,7 +715,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.5";
+  const BUILD = "1.1.6";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -778,8 +821,8 @@ const CORE = (function () {
     if (opts && opts.replace) S.outbox = S.outbox.filter((e) => !(e.op === op && opts.replace(e)));
     S.outbox.push(env);
     // Parked envelopes are small, but a door that never learns their op must not fill the phone.
-    const parked = parkedOut();
-    if (parked.length > 300) { const drop = {}; parked.slice(0, parked.length - 300).forEach((e) => { drop[e.id] = 1; }); S.outbox = S.outbox.filter((e) => !drop[e.id]); }
+    // The oldest parked records go once the cap is full. The door line shows "parked N of 300".
+    S.outbox = C.capParked(S.outbox, S.sync.ops);
     save();
     if (sendable(env)) scheduleFlush(opts && opts.holdMs ? opts.holdMs + 50 : 0);
     return env;
@@ -833,8 +876,10 @@ const CORE = (function () {
   function refusedFinal(env, code) {
     if (env.op === "card_answer") {
       S.outbox = S.outbox.filter((e) => e.id !== env.id);
-      const c = S.cards[env.body.card_id];
-      if (c && c.answered) c.answered.refused = code;
+      const id = env.body && env.body.card_id;
+      if (id && S.cards[id]) S.cards[id] = C.applyAnswerFinal(S.cards[id], code);
+      // stale: the question changed under the tap. Drop it and pull, so the new text is what shows.
+      if (C.answerFollowup(code).repull) pull();
     } else {
       env.dead = code;
     }
@@ -1008,7 +1053,10 @@ const CORE = (function () {
     if (!live || live.answered || C.cardExpired(live, Date.now())) return;
     live.answered = { choice: choice, at: nowIso(), sent: false };
     const ans = live.answered;
-    const env = enqueue("card_answer", { card_id: c.id, choice: choice }, { holdMs: 3500 });
+    const rev = C.shownRev(live.rev);
+    const body = { card_id: c.id, choice: choice };
+    if (rev !== undefined) body.rev = rev;
+    const env = enqueue("card_answer", body, { holdMs: 3500 });
     commit();
     // A pull can replace the card object during the hold: always go back through the id.
     toast("Sent: " + choice + " — " + String(live.text || "").slice(0, 28) + (String(live.text || "").length > 28 ? "…" : ""), () => {
@@ -1076,7 +1124,7 @@ const CORE = (function () {
   function lamp(id, state, msg) { const el = $(id); el.className = "lamp " + state; el.dataset.msg = msg; }
   function renderLamps() {
     const q = pending().length, dead = deadOut().length, parked = parkedOut().length, n = C.isNight(), e = S.sync.err_out;
-    const tail = parked ? " " + parked + " floor/done/lane record" + (parked > 1 ? "s" : "") + " parked here until the door takes them." : "";
+    const tail = parked ? " parked " + parked + " of " + C.PARKED_CAP + " here until the door takes them." : "";
     if (!keyed()) lamp("lampOut", "bad", noDoorWhy() + (q ? " — " + q + " waiting here" : "") + ". STUCK → The door.");
     else if (n) lamp("lampOut", "warn", "Dark until 06:00 ET — the door is shut by the rule." + (q ? " " + q + " held; they go after six." : ""));
     else if (e === "unauthorized" || (e === "bad_response" && !doorWorked())) lamp("lampOut", "bad", failName(e) + (q ? " — " + q + " held here" : "") + ". STUCK → The door.");
@@ -1309,7 +1357,7 @@ const CORE = (function () {
     const lastErr = (side) => { const code = S.sync["err_" + side], at = S.sync["err_" + side + "_at"], hint = S.sync["err_" + side + "_hint"];
       return code ? " · last error " + side + (at ? " " + esc(clockOf(at)) + " ET" : "") + " <b>" + esc(code) + "</b>" + (hint ? " (" + esc(hint) + ")" : "") : ""; };
     $("doorStamps").innerHTML = "out <b>" + (S.sync.pushed_at ? esc(clockOf(S.sync.pushed_at)) + " ET" : "never") + "</b> · in <b>" + (S.sync.pulled_at ? esc(clockOf(S.sync.pulled_at)) + " ET" : "never") + "</b> · waiting <b>" + pending().length + "</b>" +
-      (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b>" : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
+      (parkedOut().length ? " · parked <b>" + parkedOut().length + "</b> of " + C.PARKED_CAP : "") + (deadOut().length ? " · refused <b>" + deadOut().length + "</b>" : "") +
       (S.sync.door ? " · door <b>" + esc(S.sync.door) + "</b>" : "") + lastErr("out") + lastErr("in");
   }
   /* What the door refused stays on this phone, in sight: each one with the door's word for why.
