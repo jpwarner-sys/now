@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-TXj/A51edmjF85DyG8vyWVgZSYwXYsgW+4z/7MoCiq8=' 'sha256-gyTS0PcSgT76w6aVTd9BF6WgYV2KHUNnyvD0crvPm/A='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-b1Hd6G19SxdGF890WPsEGFkjXe+/wwGWt6MDLkBl7qE=' 'sha256-OAAhwEsidpGGBaNvSohS+/iclFSw2n/B8CVZ8S6kOVg='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -161,6 +161,8 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 .dump textarea:focus{border-color:var(--acc)}
 .dump textarea::placeholder{text-align:center}
 .dump .held{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;text-align:center}
+.dump .upd{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.06em;display:flex;justify-content:center;align-items:center;gap:10px}
+.dump .upd .u{font-family:var(--mono);font-size:13.5px;color:var(--acc);letter-spacing:.1em;background:none;border:0;cursor:pointer;padding:2px 6px;line-height:1;flex:none}
 
 .tabbar{display:flex;justify-content:space-around;padding:4px 4px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--bg)}
 .tab{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:.06em;color:var(--ink3);text-align:center;padding:4px 10px 5px;border-radius:10px;min-width:66px;background:none;border:0;cursor:pointer;line-height:1}
@@ -179,7 +181,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.6</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.7</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -278,6 +280,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
     <label class="sr" for="dumpBox">Garbage or Gold?</label>
     <textarea id="dumpBox" rows="1" placeholder="Garbage or Gold?" enterkeyhint="done"></textarea>
     <div class="held" id="heldRow" hidden></div>
+    <div class="upd" id="updRow" hidden><span id="updText"></span><button class="u" id="updGo">LOAD</button></div>
   </div>
 
   <nav class="tabbar" aria-label="Routes">
@@ -704,10 +707,190 @@ const CORE = (function () {
     return list.filter((e) => !(e && drop[e.id]));
   }
 
+  /* ---------- the shell: how a home-screen walker gets a new build ----------
+     The installed walker is one long-lived window. iOS resumes it without re-checking sw.js, and a
+     new worker's JavaScript does not run until this page reloads — which is how a phone runs an old
+     build for weeks. These ask for a check every time the app comes forward and OFFER the new build.
+     They never take it: the worker waits (sw.js does not skipWaiting on its own) and the load is a
+     tap. What is in the box, half-set on the floor, written in the STUCK split box or typed into the
+     door fields is carried across the reload by shellRescue() below, not thrown away. */
+  const SKIP_WAITING = "SKIP_WAITING";
+  const TAG_ASK = "TAG";                            // the page asks a new worker which build it is
+  const TAG_WAIT_MS = 1200;                         // bounded: a tag that never answers is UNKNOWN
+  const APPLY_WAIT_MS = 2500;                       // bounded: controllerchange is the browser's to send
+
+  /* https anywhere, or localhost on this machine. 127.0.0.1 is a secure context too, and is left out
+     on purpose: it is the origin the end-to-end suite serves from to test the walker with no worker. */
+  function secureForServiceWorker(loc) { return loc.protocol === "https:" || loc.hostname === "localhost"; }
+
+  /* Offer the new build only when this page is already controlled, a newer worker is waiting or has
+     just taken control, AND the worker's build is not the one this page is already running.
+     IDENTITY, NOT THE TRANSITION. A cold launch after a deploy is served network-first by the worker
+     that is already installed, so the page that boots IS the new build — new BUILD in the header —
+     while the OLD worker still controls it. The install that follows fires a statechange to
+     "installed" and then a controllerchange. A decision taken on the transition alone cannot tell
+     that from a page that really is stale, and would put "New build ready" under the box after every
+     single deploy, on the one line whose whole value is that it is true.
+     EQUAL suppresses. DIFFERENT offers. UNKNOWN offers — gating fails open, never closed (standing
+     law 1): a page that cannot learn the tag must not go silent on new builds. */
+  function shouldOfferReload(s) {
+    if (!s || !s.hadController) return false;
+    if (s.pageBuild && s.workerTag && String(s.pageBuild) === String(s.workerTag)) return false;
+    if (s.controllerChanged) return true;
+    return s.workerState === "installed";
+  }
+
+  /* 02:00–05:59 ET nothing is asked, so the offer is held and the button is not shown; the check keeps
+     running, because it faces no one. Derived at render time off the ET wall clock, never stored. */
+  function updateOffer(offered, d) { return !offered ? "none" : isNight(d) ? "held" : "ready"; }
+
+  /* The row itself, as the three values the page paints. Derived here so it is asserted rather than
+     grepped: "none" hides the row, "held" shows the line with no button (R-096 — nothing is asked
+     between 02:00 and 05:59 ET), "ready" shows both. `busy` is an open UNDO window: the act it guards
+     is already committed and a reload would make it permanently un-undoable, and it is three seconds
+     long, so the button waits rather than the work being lost. */
+  const UPDATE_READY = "New build ready";
+  const UPDATE_HELD = "New build ready — held until 06:00 ET";
+  const UPDATE_BUSY = "New build ready — after the UNDO";
+  function updateRow(st, busy) {
+    if (st === "none") return { hidden: true, text: "", buttonHidden: true };
+    if (st === "held") return { hidden: false, text: UPDATE_HELD, buttonHidden: true };
+    if (busy) return { hidden: false, text: UPDATE_BUSY, buttonHidden: true };
+    return { hidden: false, text: UPDATE_READY, buttonHidden: false };
+  }
+
+  /* Everything a reload would otherwise drop, gathered in one place. The DUMP box already had a home
+     in the store; the floor draft, the STUCK split box and a typed-but-unsaved door URL or key did
+     not, and the tap threw them away while the page's own comment claimed it never did. Returns null
+     when there is nothing to keep, so the stash is cleared rather than left behind. */
+  function shellRescue(t) {
+    t = t || {};
+    const out = {};
+    const keep = (k, v) => { if (v != null && String(v).trim()) out[k] = String(v); };
+    keep("box", t.box);
+    keep("split", t.split);
+    keep("pick", t.pick);
+    keep("url", t.url);
+    keep("key", t.key);
+    const d = t.draft || {}, v = {};
+    VECTORS.forEach((k) => { if (typeof d[k] === "number") v[k] = d[k]; });
+    if (Object.keys(v).length) out.draft = v;
+    return Object.keys(out).length ? out : null;
+  }
+
+  /* The LOAD tap, whole: rescue first, then apply. Everything it touches is passed in, so the suite
+     drives the real tap with a fake store and a fake shell and no page at all. */
+  function loadTap(env) {
+    env.stash(shellRescue(env.typed));
+    env.apply();
+  }
+
+  /* The new worker's own TAG, for the comparison in shouldOfferReload. A worker answers {type:"TAG"}
+     down a MessageChannel, and that reply arrives after the transition that prompted it — so the wait
+     is bounded and a timeout resolves "" (UNKNOWN, which offers). The identity query must never
+     become a new silent-failure path. `worker.tag` short-circuits it once learned. */
+  function askWorkerTag(worker, env, wait) {
+    if (!worker) return Promise.resolve("");
+    if (worker.tag) return Promise.resolve(String(worker.tag));
+    const setT = env.setTimeout || setTimeout, clearT = env.clearTimeout || clearTimeout;
+    return new Promise((resolve) => {
+      let done = false, timer = null;
+      const finish = (v) => { if (done) return; done = true; clearT(timer); resolve(v ? String(v) : ""); };
+      timer = setT(() => finish(""), typeof wait === "number" ? wait : TAG_WAIT_MS);
+      try {
+        const ch = new env.MessageChannel();
+        ch.port1.onmessage = (e) => finish(e && e.data && e.data.tag);
+        worker.postMessage({ type: TAG_ASK }, [ch.port2]);
+      } catch (e) { finish(""); }
+    });
+  }
+
+  /* Wake a waiting worker, then load once it has the page; if it already claimed the page, load now.
+     At most one reload, however many controllerchange events arrive.
+     controllerchange is the signal, but it is the browser's to send: if activate throws under storage
+     pressure, or iOS simply does not deliver it in a standalone window, LOAD must not be a dead
+     button with no feedback. The bounded wait reloads anyway — the worst case is the same page back,
+     which is what the tap asked for. */
+  function applyShellUpdate(env) {
+    let done = false, timer = null;
+    const setT = env.setTimeout || setTimeout, clearT = env.clearTimeout || clearTimeout;
+    const reload = () => { if (done) return; done = true; clearT(timer); env.location.reload(); };
+    const worker = env.registration && env.registration.waiting;
+    if (!worker) { reload(); return; }
+    env.serviceWorker.addEventListener("controllerchange", reload);
+    timer = setT(reload, typeof env.applyWaitMs === "number" ? env.applyWaitMs : APPLY_WAIT_MS);
+    try { worker.postMessage({ type: SKIP_WAITING }); } catch (e) { reload(); return; }
+    if (worker.state === "activated") reload();
+  }
+
+  /* Registers sw.js and calls onOffer() at most once, when a new build is ready for a page already
+     open. Everything it touches is passed in, so the suite drives it with four fakes and no browser.
+     Returns { stop, apply } — apply() is the tap. CORE holds no state and the page may carry no test
+     hook, so the registration is the return value's closure, not a module variable: losing it is the
+     one way this fails silently, by reopening the OLD shell on a tap. */
+  function startShellUpdates(env, onOffer) {
+    const nav = env.navigator;
+    if (!nav.serviceWorker || !secureForServiceWorker(env.location)) return { stop: () => {}, apply: () => {} };
+    const build = env.build ? String(env.build) : "";
+    let offered = false;
+    const offer = () => { if (offered) return; offered = true; onOffer(); };
+    let seen = null;                                // the newest worker this page has been told about
+    /* With a build to compare against, the decision waits for the tag; with none there is nothing to
+       wait for and nothing to learn, so that path stays synchronous and offers (law 1 again). */
+    const decide = (s, worker) => {
+      if (offered) return;
+      if (!build) { if (shouldOfferReload(s)) offer(); return; }
+      askWorkerTag(worker, env, env.tagWaitMs).then((tag) => {
+        if (worker && tag) { try { worker.tag = tag; } catch (e) {} }
+        if (shouldOfferReload(Object.assign({ pageBuild: build, workerTag: tag }, s))) offer();
+      });
+    };
+    let hadController = !!nav.serviceWorker.controller;
+    const onController = () => {
+      decide({ hadController: hadController, controllerChanged: true }, seen || nav.serviceWorker.controller);
+      hadController = true;                         // a first install arms the latch without offering
+    };
+    nav.serviceWorker.addEventListener("controllerchange", onController);
+    let reg = null;
+    const watch = (worker) => {
+      if (!worker) return;
+      seen = worker;
+      /* The controller is re-read live here, not taken from the captured flag: a worker can reach
+         "installed" while the app is hidden. The captured flag suppresses the first install; this one
+         catches the resume. Unifying them breaks one of the two. */
+      const onState = () => decide({ hadController: !!nav.serviceWorker.controller, workerState: worker.state }, worker);
+      worker.addEventListener("statechange", onState);
+      onState();                                    // it may be installed already; no event is coming
+    };
+    const check = () => { if (reg) reg.update().catch(() => {}); };
+    nav.serviceWorker.register("sw.js", { scope: "./", updateViaCache: "none" }).then((r) => {
+      reg = r;
+      if (r.waiting) watch(r.waiting);
+      if (r.installing) watch(r.installing);
+      r.addEventListener("updatefound", () => watch(r.installing));
+      check();
+    }).catch(() => {});
+    const onVisible = () => { if (env.document.visibilityState === "visible") check(); };
+    env.document.addEventListener("visibilitychange", onVisible);
+    env.window.addEventListener("pageshow", check);   // restored from the back/forward cache
+    env.window.addEventListener("focus", check);      // forward with no visibility transition
+    return {
+      stop: () => {
+        nav.serviceWorker.removeEventListener("controllerchange", onController);
+        env.document.removeEventListener("visibilitychange", onVisible);
+        env.window.removeEventListener("pageshow", check);
+        env.window.removeEventListener("focus", check);
+      },
+      apply: () => applyShellUpdate({ registration: reg, serviceWorker: nav.serviceWorker, location: env.location, setTimeout: env.setTimeout, clearTimeout: env.clearTimeout, applyWaitMs: env.applyWaitMs })
+    };
+  }
+
   return { TZ, et, isNight, minutesToCutoff, walkerDay, shiftDay, dow, words, VECTORS, isNum, isTripped, chipFor, floorBand,
     FLOOR_FRESH_MS, floorFresh, PHYSICAL_VERBS, scoreItem, pickFirst, LANES, laneStreak, DUMP_SCHEMA, ORIGIN, DUMP_MAX_BYTES, DOOR_MAX_BODY, bodyBytes, dumpWireBytes, LIVE_OPS, canSend,
     wire, pullBody, classify, errorHint, doorUrlProblem, shownRev, answerFollowup, applyAnswerFinal, PARKED_CAP, capParked,
-    emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler };
+    emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler,
+    SKIP_WAITING, TAG_ASK, UPDATE_READY, UPDATE_HELD, UPDATE_BUSY, secureForServiceWorker, shouldOfferReload, updateOffer, updateRow,
+    shellRescue, loadTap, askWorkerTag, applyShellUpdate, startShellUpdates };
 })();
 </script>
 
@@ -715,7 +898,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.6";
+  const BUILD = "1.1.7";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -725,7 +908,7 @@ const CORE = (function () {
   const bytesOf = (s) => new TextEncoder().encode(s).length;
 
   /* ---------- this phone's memory: one namespace, `now.*` ---------- */
-  const K = { store: "now.store.v1", v0: "now.walker.v0", held: "now.walker.held", stamp: "now.last_pull_stamp", lanes: "now.lanes.v1", route: "now.walker.route", url: "now.door_url", key: "now.door_key" };
+  const K = { store: "now.store.v1", v0: "now.walker.v0", held: "now.walker.held", stamp: "now.last_pull_stamp", lanes: "now.lanes.v1", route: "now.walker.route", url: "now.door_url", key: "now.door_key", rescue: "now.walker.rescue" };
   const ls = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); } catch (e) {} },
@@ -1456,29 +1639,24 @@ const CORE = (function () {
     $("heldRow").textContent = q ? q + " waiting to go out · " + (C.isNight() ? "held until 06:00 ET" : keyed() ? "tries on the next sync" : "no door yet") : "";
   }
 
+  /* A new build is one line under the box — never a reload you did not ask for. The three values are
+     C.updateRow's, so what is on screen is the thing the suite asserts. */
+  let updOffered = false;
+  function undoOpen() { try { return !!undoFn && Date.now() < toastEnd; } catch (e) { return false; } }
+  function renderUpdate() {
+    const row = C.updateRow(C.updateOffer(updOffered), undoOpen());
+    $("updRow").hidden = row.hidden;
+    $("updText").textContent = row.text;
+    $("updGo").hidden = row.buttonHidden;
+  }
+
   function render() {
-    renderLamps(); renderHeld();
+    renderLamps(); renderHeld(); renderUpdate();
     if (route === "now") renderNow();
     else if (route === "cards") renderCards();
     else if (route === "floor") renderFloor();
     else if (route === "stuck") renderStuck();
     if (route !== "now") $("phone").classList.toggle("dark", !!dark());
-  }
-
-  /* A home-screen app that is only ever resumed never reloads, so it would run an old build for
-     weeks. On return (at most hourly) it asks the server which build is current, and reloads to it
-     only when nothing is in hand: no text in the box, no floor half-set, no door being typed. */
-  let lastBuildCheck = 0;
-  const idle = () => !$("dumpBox").value.trim() && !C.VECTORS.some((k) => typeof draft[k] === "number") && !dirty.url && !dirty.key && !$("splitBox").value.trim() && $("toast").hidden;
-  async function checkBuild() {
-    if (Date.now() - lastBuildCheck < 3600e3) return;
-    lastBuildCheck = Date.now();
-    try {
-      if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
-      const r = await fetch("./?build=" + Date.now(), { cache: "no-store" });
-      const m = (await r.text()).match(/const BUILD = "([^"]+)"/);
-      if (m && m[1] !== BUILD && idle()) location.reload();
-    } catch (e) {}
   }
 
   /* ---------- your data: export / import ---------- */
@@ -1536,7 +1714,7 @@ const CORE = (function () {
     t.style.bottom = "auto";
     t.style.top = Math.max(8, d.top - t.offsetHeight - 10) + "px";
   }
-  function endToast() { clearInterval(toastT); $("toast").hidden = true; undoFn = null; }
+  function endToast() { clearInterval(toastT); $("toast").hidden = true; undoFn = null; renderUpdate(); }
   /* The UNDO window is wall-clock time, like the hold it guards: iOS stops timers while the app is
      in the background, so counting ticks would leave UNDO on screen after the thing had gone. */
   function toast(text, undo) {
@@ -1545,6 +1723,7 @@ const CORE = (function () {
     toastEnd = Date.now() + 3000;
     $("toastUndo").hidden = !undo;
     $("toast").hidden = false;
+    renderUpdate();                   // an open UNDO window withholds LOAD for its three seconds
     placeToast();
     clearInterval(toastT);
     const tick = () => { const left = Math.ceil((toastEnd - Date.now()) / 1000); if (left <= 0) endToast(); else $("toastUndo").textContent = "UNDO · " + left; };
@@ -1625,7 +1804,7 @@ const CORE = (function () {
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { endToast(); cardSched.clear(); return; }          // leaving the app ends the UNDO window and pauses the card timer
-    adoptStored(); render(); checkBuild();
+    adoptStored(); render();
     cardSched.onVisibility("visible");
     const answers = flush(["card_answer"]);
     answers.then(() => flush());
@@ -1641,8 +1820,28 @@ const CORE = (function () {
   let lastDark = dark(), lastMinute = -1;
   setInterval(() => { const d = dark(), m = new Date().getMinutes(); if (d !== lastDark || m !== lastMinute) { if (lastDark === "night" && !d) sync(); lastDark = d; lastMinute = m; render(); } }, 15000);
   window.addEventListener("resize", () => requestAnimationFrame(placeToast));
-  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+  /* One long-lived window: iOS resumes the home-screen app without re-checking sw.js, so a deploy can
+     sit unseen for weeks. Every time the app comes forward — visibility, pageshow, focus — the shell
+     asks whether sw.js changed, and offers the new build once a worker is ready. No hourly floor: the
+     ask is a conditional GET of a small worker file, where the old check pulled the whole page once an
+     hour and then reloaded the phone on its own. */
+  const shellUp = C.startShellUpdates(
+    { navigator: navigator, location: location, document: document, window: window, build: BUILD, MessageChannel: MessageChannel },
+    () => { updOffered = true; render(); }
+  );
+  /* The tap is the act, and it keeps your own input: unsent words, a half-set floor reading, the
+     STUCK split box and a typed-but-unsaved door URL or key all go into the stash and come back on
+     boot. C.loadTap holds the sequence so the suite can drive the real tap with no page. */
+  $("updGo").onclick = () => C.loadTap({
+    typed: { box: $("dumpBox").value, split: $("splitBox").value, pick: splitPick, url: dirty.url ? $("doorUrlBox").value : "", key: dirty.key ? $("doorKeyBox").value : "", draft: draft },
+    stash: (r) => {
+      if (r && r.box) S.boxed = { text: r.box, at: nowIso() };
+      ls.set(K.rescue, r ? JSON.stringify(r) : null);
+      save();
+    },
+    apply: () => shellUp.apply(),
+  });
+  if ("serviceWorker" in navigator && C.secureForServiceWorker(location)) {
     navigator.serviceWorker.addEventListener("message", (e) => { if (e && e.data && e.data.type === "pull") { if (e.data.route) go(e.data.route); sync(); } });
   }
 
@@ -1651,6 +1850,20 @@ const CORE = (function () {
   save();
   $("verNum").textContent = BUILD;
   if (S.boxed && !$("dumpBox").value) $("dumpBox").value = S.boxed.text;   // words moved back from STUCK, not yet re-sent
+  /* Put back what the LOAD tap stashed, then clear it — a reload after the tap must not keep
+     re-populating boxes the person has since emptied. */
+  {
+    const r = ls.json(K.rescue, null);
+    if (r) {
+      ls.set(K.rescue, null);
+      if (r.box && !$("dumpBox").value) $("dumpBox").value = r.box;
+      if (r.split) $("splitBox").value = r.split;
+      if (r.pick) splitPick = r.pick;
+      if (r.url) { $("doorUrlBox").value = r.url; dirty.url = true; }
+      if (r.key) { $("doorKeyBox").value = r.key; dirty.key = true; }
+      if (r.draft) C.VECTORS.forEach((k) => { if (typeof r.draft[k] === "number") draft[k] = r.draft[k]; });
+    }
+  }
   const routes = ["now", "cards", "floor", "stuck"], asked = location.hash.slice(1);
   go(routes.indexOf(asked) >= 0 ? asked : routes.indexOf(ls.get(K.route)) >= 0 ? ls.get(K.route) : "now");
   sync();
