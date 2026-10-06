@@ -5,7 +5,7 @@ A one-screen phone surface for one person. It does two jobs and nothing else:
 1. **Get things out of your head and into the stack** — a thought, an answer, a floor reading — instantly, with no signal, and never lose one.
 2. **Put what the stack needs from you in front of you** — one card at a time, one thing to do at a time — and nothing else, and nothing at all after 02:00 or on a red floor.
 
-Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.1.5` — if it doesn't, the page is cached and nothing else you are seeing can be trusted.
+Live at **walker.ontologyhome.ca** (GitHub Pages; add it to the home screen as *Walker*). One HTML file, no build, no dependencies, no analytics. The header says `NOW 1.1.7` — if it doesn't, the page is cached and nothing else you are seeing can be trusted. The `LOAD` line below the box is the other half of the same fact: it appears only when the build in that header is genuinely behind the one on the server, never because a worker caught up with a page that was already current.
 
 ## The shape of it
 
@@ -69,19 +69,25 @@ One namespace, `now.*`, in this phone's `localStorage`:
 
 **Export / Import** (STUCK → Your data) moves a phone's store as one JSON file. Import merges, newest record winning; a start finished on either phone never comes back; it also reads 0.9 export files.
 
-A service worker (`sw.js`) keeps the page openable with no signal. It only ever answers same-origin GETs, network first — it never touches the door.
+A service worker (`sw.js`) keeps the page openable with no signal. It only ever answers same-origin GETs, network first — it never touches the door. What makes a new build visible is that `sw.js`'s own bytes change (the `TAG` below); the worker also declines to answer the browser's request for `sw.js`, and registers with `updateViaCache:"none"`, but those are cheap defence, not the repair. The cache sweep is scoped to this app's `now-shell-` prefix for the same reason: `walker.ontologyhome.ca` is a dedicated origin, so the unscoped sweep it replaced could only ever have deleted walker's own caches. Hygiene against a future co-tenant, not a bug that was live.
+
+A new build is **offered, never taken** — of the worker as much as the page. `sw.js` does not `skipWaiting()` on its own, so a new worker installs and then waits. The installed walker is one long-lived window, so every time it comes forward (visibility, pageshow, focus) the shell asks whether `sw.js` changed; when a new worker is waiting, the page asks it which build it is and compares that against its own. **Equal suppresses the line** — a cold launch after a deploy is served network-first, so the page that boots already *is* the new build and has nothing to load. Different offers it; unknown offers it too, because a page that cannot learn the tag must not go quiet on updates. When it offers, one line appears under the DUMP box with a `LOAD` button; nothing reloads and nothing is promoted until that button is tapped, and 02:00–05:59 ET the line reads *held until 06:00 ET* and offers no button.
+
+The tap keeps your input. Unsent words in the DUMP box, a half-set FLOOR reading, the STUCK split box and a door URL or key typed but not yet saved are all stashed before the reload and put back on boot. An open `UNDO` window withholds the button for its three seconds rather than making a committed act un-undoable. If the browser never confirms the new worker took the page, the tap reloads anyway after a bounded wait — `LOAD` is never a dead button.
+
+**Standing chore — three stamps move together:** the header (`id="verNum"`), `const BUILD` in `index.html`, and `var TAG` in `sw.js`. Checks in `test.js` hold them equal, and the page's build-identity gate reads both. The tag in `sw.js` is what makes the browser install a new worker at all: a deploy that leaves `sw.js` untouched installs nothing and offers nothing.
 
 ## Tests
 
 ```
-node test.js          # no dependencies — 314 checks
+node test.js          # no dependencies — 383 checks
 node test.js --pin-csp  # after editing either script: re-pin their hashes in the CSP
-node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 48 scenarios
+node test/e2e.mjs     # headless Chromium (Playwright) against a mock door — 59 scenarios
 ```
 
 `test.js` lifts the `<script id="core">` block out of the shipped `index.html` and runs it: joeos-core's own contract vectors (**14 floor-matrix, 15 FIRST** — the same files that test `ops.py`), every wire shape against DOOR.md, the 0.9 migration, the pull-merge rules, the clock on both sides of DST, and the ship greps (no door URL, key, or deployment id anywhere public; every key in `now.*`; the build tag; the CSP's hashes match the scripts).
 
-`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO, including after the phone was away; a card answered elsewhere; an answer refused; a refused dump retried, re-boxed or let go; the dark window and a red floor; a 0.9.6 phone upgrading; export (never the door key) and import, including a 0.9 file; a finished start never coming back from an old export; a hostile card; opening with no signal; FIRST at real phone heights; and the proposed door taking floor, done, lanes, starts and the brief — and a rolled-back door getting none of them. Screens land in `test/shots/` for a person to look at.
+`test/e2e.mjs` drives the real page against `test/mock-door.mjs`, which answers like the live door — 302 to an echo, an empty body on a wrong key, `error` words, unknown ops filed as dumps, cards held from a thin floor. It covers: nothing lost without a door or a signal; exactly-once delivery; cards in and answers out; UNDO, including after the phone was away; a card answered elsewhere; an answer refused; a refused dump retried, re-boxed or let go; the dark window and a red floor; a 0.9.6 phone upgrading; export (never the door key) and import, including a 0.9 file; a finished start never coming back from an old export; a hostile card; opening with no signal; a second build offered to an open page, the tap loading it, and the floor draft, split box and unsaved door fields coming back; the LOAD button withheld at 03:00 ET and during an open UNDO window; FIRST at real phone heights; and the proposed door taking floor, done, lanes, starts and the brief — and a rolled-back door getting none of them. Screens land in `test/shots/` for a person to look at.
 
 ## Layout
 

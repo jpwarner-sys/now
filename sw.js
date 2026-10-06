@@ -10,17 +10,44 @@
  * Only same-origin GETs are touched: the door is another origin and every door
  * call is a POST, so nothing here can ever answer for the stack.
  */
-var CACHE = "now-shell-v1";
+/* The browser installs a new worker only when THIS file's bytes change. With a fixed cache name a
+   deploy that touched only index.html installed nothing, fired no event, and the phone kept the old
+   build — so the tag is stamped by hand here and held equal to index.html's BUILD by the suite. */
+var TAG = "1.1.7";                      // bumped with BUILD in index.html; the suite holds them equal
+var PREFIX = "now-shell-";
+var CACHE = PREFIX + TAG;
 var SHELL = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
+  /* The page itself must cache or the install fails on purpose: an aborted install leaves the previous
+     worker and its shell in control, which is the safe outcome for a phone with no signal. Everything
+     else is best-effort — one slow icon must not cost the new build. cache:"reload" so the host's HTTP
+     cache cannot fill a new build's shell with the previous deploy's files. */
+  e.waitUntil(caches.open(CACHE).then(function (c) {
+    function put(url, required) {
+      return fetch(url, { cache: "reload" }).then(function (res) {
+        if (res && res.ok) return c.put(url, res);
+        if (required) throw new TypeError("shell: " + url);
+        return null;
+      }).catch(function (err) { if (required) throw err; return null; });
+    }
+    return Promise.all(SHELL.map(function (url) { return put(url, url === "./" || url === "index.html"); }));
+  }));
+  /* No skipWaiting() here, on purpose: "a new build is offered, never taken" has to be true of the
+     WORKER too. An unconditional skip took the worker with no tap, swept the running build's shell
+     out from under the page that was still running it, and left registration.waiting empty — which
+     made the page's waiting branch dead code and left it nothing to ask the new build's TAG. The page
+     promotes this worker by sending SKIP_WAITING from the LOAD line, and only then. */
 });
 
 self.addEventListener("activate", function (e) {
+  /* The sweep is scoped to this app's own prefix. walker.ontologyhome.ca is a dedicated origin (see
+     CNAME) with scope "/", so the old unscoped sweep could only ever have deleted walker's own
+     caches — this is hygiene against a future co-tenant, NOT a live bug fix, and no comment, README
+     line or PR body should say otherwise. */
   e.waitUntil(
     caches.keys()
-      .then(function (keys) { return Promise.all(keys.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })); })
+      .then(function (keys) { return Promise.all(keys.filter(function (k) { return k.indexOf(PREFIX) === 0 && k !== CACHE; }).map(function (k) { return caches.delete(k); })); })
       .then(function () { return self.clients.claim(); })
   );
 });
@@ -40,6 +67,8 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET") return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // The browser checks this file for a new build. Never answer it from the shell cache.
+  if (url.pathname.endsWith("/sw.js")) return;
   // A navigation revalidates with the server every time (no-cache), so a new build is never hidden
   // behind the browser's HTTP cache and the version tag in the header stays true.
   // The throw path is narrow. respondWith's promise always fulfills:
@@ -70,7 +99,18 @@ function pullAll() {
   });
 }
 self.addEventListener("message", function (e) {
-  if (e.data && e.data.type === "pull") pullAll();
+  if (!e.data) return;
+  if (e.data.type === "pull") pullAll();
+  // The page sends this from the LOAD line. It is the ONLY thing that promotes a waiting worker.
+  else if (e.data.type === "SKIP_WAITING") self.skipWaiting();
+  /* Which build am I? The page asks this before it offers anything, because a cold launch after a
+     deploy is already the new build and must not be told a new build is ready. Answered down the
+     port the page sent, so the reply reaches the one asker and nothing is broadcast. */
+  else if (e.data.type === "TAG") {
+    var port = e.ports && e.ports[0];
+    if (port) port.postMessage({ type: "TAG", tag: TAG });
+    else if (e.source && e.source.postMessage) e.source.postMessage({ type: "TAG", tag: TAG });
+  }
 });
 
 /* Stage 2 (not live): the stack's relay sends a push whose whole payload is

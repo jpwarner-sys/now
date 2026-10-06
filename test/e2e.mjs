@@ -12,6 +12,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { startMockDoor } from "./mock-door.mjs";
 
@@ -34,7 +35,9 @@ await new Promise((ok) => host.listen(0, "127.0.0.1", ok));
 const APP = `http://127.0.0.1:${host.address().port}/`;
 
 /* ---------- harness ---------- */
-const browser = await chromium.launch();
+/* Default launch is Playwright's own Chromium. PW_CHANNEL=chrome uses a browser already
+   installed on the machine when the managed Chromium build is not. */
+const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
 const results = [];
 const errors = [];
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -230,7 +233,8 @@ await block("floor, done and lanes are never sent to a door that does not list t
   const s = await store(page);
   assert(s.outbox.filter((e) => e.op === "floor").length === 2, "both readings parked on the phone", s.outbox.map((e) => e.op));
   await page.click("#lampOut");
-  assert(/parked here until the door takes them/.test(await toastText(page)), "the lamp says so");
+  const lampSaid = await toastText(page);
+  assert(/parked \d+ of \d+ here until the door takes them/.test(lampSaid), "the lamp says so", lampSaid);
   assert(/ok/.test(await lampClass(page, "lampOut")), "and stays green — parked is not failing");
 });
 
@@ -863,7 +867,7 @@ await block("a pull knocked right after a good one: STUCK says it was IN, when, 
   for (const id of ["lampOut", "lampIn", "lampCut"]) assert(/\bok\b/.test(await lampClass(p, id)), id + " stays green", await lampClass(p, id));
   await tab(p, "stuck");
   const stamps = (await p.textContent("#doorStamps")).trim();
-  assert(stamps === "out 12:07 ET · in 23:39 ET · waiting 0 · parked 4 · last error in 23:39 ET bad_response (HTTP 200: walker-door)", "STUCK names the side and the time", stamps);
+  assert(stamps === "out 12:07 ET · in 23:39 ET · waiting 0 · parked 4 of 300 · last error in 23:39 ET bad_response (HTTP 200: walker-door)", "STUCK names the side and the time", stamps);
   await p.click("#lampIn");
   const said = await toastText(p);
   assert(/knock, not the request/.test(said) && !/error page|URL is wrong/.test(said), "IN names a knock, not an error page", said);
@@ -1051,14 +1055,18 @@ await block("the home-screen app opens with no signal (service worker, on localh
   if (!(await p.evaluate(() => navigator.serviceWorker.controller))) await p.reload();   // the very first load is never controlled
   await until(async () => !!(await p.evaluate(() => navigator.serviceWorker.controller)), "the page is under the worker");
 
-  const shelled = await p.evaluate(async () => {
-    const c = await caches.open("now-shell-v1");
+  const build = await p.textContent("#verNum");
+  const shelled = await p.evaluate(async (tag) => {
+    const c = await caches.open("now-shell-" + tag);
     const keys = await c.keys();
     return keys.some((k) => { const u = new URL(k.url).pathname; return u === "/" || u.endsWith("index.html"); });
-  });
+  }, build);
   assert(shelled, "the shell (index.html) is in the cache");
 
-  const build = await p.textContent("#verNum");
+  // The only check that can ever see a broken hadController: a clean first install must offer nothing.
+  const offered = await p.evaluate(() => { const r = document.getElementById("updRow"); return !!r && !r.hidden; });
+  assert(!offered, "a clean first install shows no LOAD line");
+
   host2.closeAllConnections?.(); host2.close();
   // Only the app's own host dies here. setOffline(true) would also silence the mock door below,
   // which is not the promise under test — the worker standing in for a dead origin, not the network as a whole.
@@ -1071,6 +1079,153 @@ await block("the home-screen app opens with no signal (service worker, on localh
   await dump(p, "dumped while the app's own host is dead");
   await until(() => d.state.raw.some((r) => r.text === "dumped while the app's own host is dead"), "a DUMP still reaches a door that is still up");
   await ctx.close(); await d.close();
+});
+
+/* A second build on the same localhost origin. Flipping deploy is the ship. The CSP pins each
+   inline script by hash, so the bumped build is re-pinned here or it runs no script at all —
+   the same arithmetic as test.js --pin-csp. */
+function openTwoBuildHost() {
+  const A = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const W = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const BUILD_A = (A.match(/const BUILD = "([^"]+)"/) || [])[1];
+  const BUILD_B = BUILD_A + "-b";
+  const pin = (src) => {
+    const hashes = [...src.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((x) => "'sha256-" + crypto.createHash("sha256").update(x[1], "utf8").digest("base64") + "'");
+    return src.replace(/(<meta http-equiv="Content-Security-Policy" content="[^"]*?script-src )[^;]*;/, (_, a) => a + hashes.join(" ") + ";");
+  };
+  const B = pin(A.split(`const BUILD = "${BUILD_A}"`).join(`const BUILD = "${BUILD_B}"`));
+  const WB = W.split(`var TAG = "${BUILD_A}"`).join(`var TAG = "${BUILD_B}"`);
+  if (!(B !== A && WB !== W && /const BUILD = "[^"]+-b"/.test(B))) throw new Error("the second build's bytes really differ");
+  let serveB = false;
+  const host2 = http.createServer((q, r) => {
+    const p2 = q.url.split("?")[0];
+    if (serveB && (p2 === "/" || p2 === "/index.html")) { r.writeHead(200, { "Content-Type": "text/html" }); r.end(B); return; }
+    if (serveB && p2 === "/sw.js") { r.writeHead(200, { "Content-Type": "text/javascript" }); r.end(WB); return; }
+    serveStatic(q, r);
+  });
+  return {
+    BUILD_A, BUILD_B,
+    listen: () => new Promise((ok) => host2.listen(0, "127.0.0.1", ok)),
+    url: () => `http://localhost:${host2.address().port}/`,
+    deploy: () => { serveB = true; },
+    close: () => { host2.closeAllConnections?.(); host2.close(); },
+  };
+}
+const rowShown = (p) => p.evaluate(() => { const r = document.getElementById("updRow"); return !!r && !r.hidden; });
+async function phoneOnBuild(url, timeIso) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.clock.install({ time: new Date(timeIso) });
+  await p.goto(url);
+  await p.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await p.evaluate(() => navigator.serviceWorker.controller))) await p.reload();
+  await until(async () => !!(await p.evaluate(() => navigator.serviceWorker.controller)), "the page is under the worker");
+  return p;
+}
+async function offerArrives(p) {
+  await until(async () => {
+    await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+    return await rowShown(p);
+  }, "the second build is offered to the page that is already open", 25000);
+}
+
+/* The positive counterpart to the block above. "A clean first install shows no LOAD line" is also
+   true when the offer path is dead, when #updRow has been deleted, and when the feature never offers
+   under any condition — so on its own it distinguishes nothing. This serves a real second build to a
+   page that is already open and running the first one, and drives the whole promise end to end: the
+   worker waits, the line appears with its button, the tap loads the new build, and the words typed
+   while all that happened come back. */
+await block("a second build is offered to an open page, and the tap loads it without losing what was typed", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const p = await phoneOnBuild(host2.url(), "2026-09-24T16:00:00Z");   // noon ET — never the dark window, so the button is real
+  assert((await p.textContent("#verNum")) === host2.BUILD_A, "the open page is running the first build", await p.textContent("#verNum"));
+  assert(!(await rowShown(p)), "no LOAD line while there is only one build");
+
+  host2.deploy();
+  await p.fill("#dumpBox", "words typed while the update arrived");
+  await offerArrives(p);
+  assert(await p.isVisible("#updGo"), "the LOAD button is on screen at noon ET");
+  assert(/New build ready/.test(await p.textContent("#updText")), "the line says a new build is ready", await p.textContent("#updText"));
+
+  await p.click("#updGo");
+  await until(async () => (await p.textContent("#verNum")) === host2.BUILD_B, "the tap loads the second build", 25000);
+  assert((await p.inputValue("#dumpBox")) === "words typed while the update arrived", "the typed words came back after the tap", await p.inputValue("#dumpBox"));
+  assert(!(await rowShown(p)), "and the line is gone, because this page IS the new build");
+
+  host2.close();
+  await p.context().close();
+});
+
+/* The DUMP box also has a home in the store, so it can come back with the rescue block deleted.
+   The floor draft, the split box and a door URL or key typed but not saved live only in the stash
+   the boot reads back. This is that read. */
+await block("the LOAD tap puts back the floor draft, the split box, and a door URL or key that was not saved", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const p = await phoneOnBuild(host2.url(), "2026-09-24T16:00:00Z");
+  await p.fill("#dumpBox", "words typed while the update arrived");
+  await p.locator("#splitBox").evaluate((el) => { el.value = "step one\nstep two"; });
+  await tab(p, "floor");
+  await p.click('.seg[data-k=energy] span[data-n="3"]');
+  await tab(p, "stuck");
+  await p.fill("#doorUrlBox", "https://door.test/exec");
+  await p.fill("#doorKeyBox", "k-rescue-1");
+  host2.deploy();
+  await offerArrives(p);
+  await p.click("#updGo");
+  await until(async () => (await p.textContent("#verNum")) === host2.BUILD_B, "the tap loads the second build", 25000);
+  assert((await p.inputValue("#splitBox")) === "step one\nstep two", "the split box came back", await p.inputValue("#splitBox"));
+  await tab(p, "floor");
+  assert(await p.locator('.seg[data-k=energy] span[data-n="3"].on').count() === 1, "the half-set floor reading came back");
+  await tab(p, "stuck");
+  assert((await p.inputValue("#doorUrlBox")) === "https://door.test/exec", "the unsaved door URL came back", await p.inputValue("#doorUrlBox"));
+  assert((await p.inputValue("#doorKeyBox")) === "k-rescue-1", "the unsaved door key came back", await p.inputValue("#doorKeyBox"));
+  const saved = await p.evaluate(() => ({ url: localStorage.getItem("now.door_url"), key: localStorage.getItem("now.door_key") }));
+  assert(saved.url === null && saved.key === null, "coming back is not the same as Save", saved);
+  host2.close();
+  await p.context().close();
+});
+
+/* 02:00–05:59 ET the line is on screen and the button is not. A later write that forces the
+   button visible is the whole of this check. */
+await block("03:00 ET the new build is held and the LOAD button is withheld until 06:00 ET", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const p = await phoneOnBuild(host2.url(), "2026-09-25T07:00:00Z");   // 03:00 EDT
+  assert(!(await rowShown(p)), "no LOAD line before there is a second build");
+  host2.deploy();
+  await offerArrives(p);
+  assert(/held until 06:00 ET/.test(await p.textContent("#updText")), "the line names the hold", await p.textContent("#updText"));
+  assert(!(await p.isVisible("#updGo")), "nothing is asked at 03:00 ET");
+  await p.clock.setSystemTime(new Date("2026-09-25T10:30:00Z"));         // 06:30 EDT
+  await p.clock.fastForward(16000);                                      // the page re-reads the wall clock on its 15 s tick
+  await until(async () => await p.isVisible("#updGo"), "the button is there at 06:30 ET");
+  assert(/New build ready/.test(await p.textContent("#updText")) && !/held until/.test(await p.textContent("#updText")), "the hold has lifted", await p.textContent("#updText"));
+  host2.close();
+  await p.context().close();
+});
+
+/* An open UNDO window is the one piece of state a reload would make permanent. The button waits. */
+await block("an open UNDO window withholds LOAD until the three seconds are up", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const p = await phoneOnBuild(host2.url(), "2026-09-24T16:00:00Z");
+  host2.deploy();
+  await offerArrives(p);
+  assert(await p.isVisible("#updGo"), "LOAD is on screen before the UNDO window");
+  await tab(p, "floor");
+  await p.click('.seg[data-k=energy] span[data-n="2"]');
+  await p.click("#logFloor");
+  const busy = await p.evaluate(() => ({
+    rowHidden: document.getElementById("updRow").hidden,
+    buttonHidden: document.getElementById("updGo").hidden,
+    text: document.getElementById("updText").textContent,
+  }));
+  assert(busy.rowHidden === false && busy.buttonHidden === true && busy.text === "New build ready — after the UNDO", "the button waits out the UNDO window", busy);
+  host2.close();
+  await p.context().close();
 });
 
 /* =================================================================== report */

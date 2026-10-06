@@ -16,6 +16,8 @@
  *             independent derivation. None of it is skipped.
  *   SHIP      no door URL, key or deployment id anywhere public; one namespace; the build tag.
  *   SW        the service worker's throw path: a fulfilled response, a cached page, or a network error.
+ *   UPDATE    the shell's update path: a new build is OFFERED to a page that is already open, held in the
+ *             dark window, and never taken without a tap.
  *
  * The browser half — the real page against a door that behaves like the live one — is
  * test/e2e.mjs.  NOW_INDEX=<path> points this suite at another copy of the page.
@@ -392,7 +394,7 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "door stays in now.door_url / now.door_key", kvals.includes("now.door_url") && kvals.includes("now.door_key"));
   check("SHIP", "localStorage only through the one helper", (SRC.match(/localStorage\./g) || []).length === 4, (SRC.match(/localStorage\./g) || []).length);
   check("SHIP", "0.9.x keys are read, never written", kvals.includes("now.walker.v0") && kvals.includes("now.walker.held") && !/ls\.set\(K\.(v0|held|stamp)\b/.test(SRC));
-  check("SHIP", "exactly three network calls: the door POST, the keyless GET, and the same-origin build check", (SRC.match(/\bfetch\(/g) || []).length === 3 && /fetch\("\.\/\?build=" \+ Date\.now\(\), \{ cache: "no-store" \}\)/.test(SRC));
+  check("SHIP", "exactly two network calls: the door POST and the keyless GET — freshness is the worker's job now", (SRC.match(/\bfetch\(/g) || []).length === 2 && !/\?build=/.test(SRC));
   check("SHIP", "door POST is text/plain (no preflight)", /method: "POST", headers: \{ "Content-Type": "text\/plain;charset=utf-8" \}/.test(SRC));
   check("SHIP", "the keyless GET carries no body", /fetch\(url, \{ method: "GET", cache: "no-store" \}\)/.test(SRC));
   check("SHIP", "no artifact runtime, no Google sign-in, no third-party script", !/window\.claude|accounts\.google|googleapis|<script src=/.test(SRC));
@@ -406,7 +408,34 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "a stale answer re-pulls", /if \(C\.answerFollowup\(code\)\.repull\) pull\(\)/.test(SRC));
   check("SHIP", "the door line shows parked N of the cap", /parked <b>" \+ parkedOut\(\)\.length \+ "<\/b> of " \+ C\.PARKED_CAP/.test(SRC) && /parked " \+ parked \+ " of " \+ C\.PARKED_CAP/.test(SRC));
   check("SHIP", "parked records are capped by the named cap", /C\.capParked\(S\.outbox, S\.sync\.ops\)/.test(SRC) && !/length - 300/.test(SRC));
-  check("SHIP", "service worker is registered", /serviceWorker\.register\("sw\.js"\)/.test(SRC));
+  check("SHIP", "service worker is registered with a fresh update check", /serviceWorker\.register\("sw\.js", \{ scope: "\.\/", updateViaCache: "none" \}\)/.test(SRC));
+  check("SHIP", "sw.js carries the build tag — a deploy that leaves sw.js alone installs no worker and offers nothing", (sw.match(/var TAG = "([^"]+)"/) || [])[1] === BUILD, { sw: (sw.match(/var TAG = "([^"]+)"/) || [])[1], page: BUILD });
+  check("SHIP", "the build tag is written once, so the suite's own lift cannot match the wrong one", (SRC.match(/const BUILD = "/g) || []).length === 1, (SRC.match(/const BUILD = "/g) || []).length);
+  // The floor is identified by lastBuildCheck, not by "3600e3": that is a plain hour and two unrelated
+  // rules (FLOOR_FRESH_MS, doorWorked) legitimately use it, so greping for it could only ever fail.
+  /* "Offered, never taken" is now true of the WORKER as well as the reload: the only self.skipWaiting()
+     left in sw.js is the one the LOAD line's message triggers, so nothing is promoted without a tap. */
+  check("SHIP", "the new build is offered, never taken: the worker waits for the tap and the one reload is the tap's",
+    (SRC.match(/\.reload\(\)/g) || []).length === 1 && /\$\("updGo"\)\.onclick = \(\) => C\.loadTap\(\{/.test(SRC) && !/checkBuild|lastBuildCheck/.test(SRC) &&
+    (sw.match(/self\.skipWaiting\(\)/g) || []).length === 1 && /e\.data\.type === "SKIP_WAITING"\) self\.skipWaiting\(\)/.test(sw),
+    { reloads: (SRC.match(/\.reload\(\)/g) || []).length, skips: (sw.match(/self\.skipWaiting\(\)/g) || []).length });
+  check("SHIP", "the offer is one line under the box, shipping hidden, and the callback that raises it is the latch and a render",
+    /id="updRow"[^>]*hidden/.test(SRC) && /renderLamps\(\); renderHeld\(\); renderUpdate\(\);/.test(SRC) && /\(\) => \{ updOffered = true; render\(\); \}/.test(SRC));
+  /* The row's logic is asserted executably in UPDATE; these lines are the whole of its application, so
+     a hand-rolled value beside them (`hidden = false` at 03:00 ET) cannot slip past either. */
+  check("SHIP", "the update row paints exactly C.updateRow's three values and nothing else",
+    /const row = C\.updateRow\(C\.updateOffer\(updOffered\), undoOpen\(\)\);/.test(SRC) &&
+    /\$\("updRow"\)\.hidden = row\.hidden;/.test(SRC) && /\$\("updText"\)\.textContent = row\.text;/.test(SRC) && /\$\("updGo"\)\.hidden = row\.buttonHidden;/.test(SRC));
+  check("SHIP", "the page hands the shell its own BUILD, so the identity gate has a real input in production and not only in the suite",
+    /build: BUILD, MessageChannel: MessageChannel/.test(SRC));
+  check("SHIP", "one end stamp for the dark window, and it is ET", /held until 06:00 ET/.test(SRC) && !/0[67]:00Z|6 ?a\.?m/i.test(SRC));
+  /* Cheap defence, not a repair: the spec forbids a worker answering its own script request anyway, and
+     sw.js was never in SHELL. This green is not evidence that anything was broken — nor is the prefix
+     sweep's: walker.ontologyhome.ca is a dedicated origin (CNAME), so the old unscoped sweep could only
+     ever have deleted walker's own caches. Hygiene against a future co-tenant, not a live bug fix. */
+  check("SHIP", "the worker leaves the browser's own sw.js request alone, and sweeps only this app's prefix", /url\.pathname\.endsWith\("\/sw\.js"\)/.test(sw) && /k\.indexOf\(PREFIX\) === 0 && k !== CACHE/.test(sw));
+  check("SHIP", "the worker's message channel keeps pull first and answers exactly two more types", /if \(e\.data\.type === "pull"\) pullAll\(\);/.test(sw) && /else if \(e\.data\.type === "SKIP_WAITING"\) self\.skipWaiting\(\);/.test(sw) && /else if \(e\.data\.type === "TAG"\) \{/.test(sw));
+  check("SHIP", "the LOAD tap's rescue is cleared by the boot that consumes it, so it cannot re-populate a box twice", /ls\.set\(K\.rescue, null\);/.test(SRC) && (SRC.match(/K\.rescue/g) || []).length === 3, (SRC.match(/K\.rescue/g) || []).length);
   check("SHIP", "the outbox is tried again every 5 minutes while visible — the cards clock only pulls (1.1.4)", /setInterval\(\(\) => \{ if \(document\.visibilityState === "visible" && pending\(\)\.length\) flush\(\["card_answer"\]\)\.then\(\(\) => flush\(\)\); \}, 5 \* 60 \* 1000\);/.test(SRC));
   const csp = (SRC.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/) || [])[1] || "";
   const dir = (d) => ((csp.match(new RegExp("(?:^|;\\s*)" + d + " ([^;]*)")) || [])[1] || "").trim().split(/\s+/).filter(Boolean);
@@ -418,7 +447,8 @@ const env = (op, body, id) => ({ id: id || "3f1c2a4e-9b7d-4c1e-8f2a-6d5b4c3a2e1f
   check("SHIP", "CSP: the network is this page and the door (https; plain http only on this machine)", eq(dir("connect-src"), ["'self'", "https:", "http://127.0.0.1:*", "http://localhost:*"]), dir("connect-src"));
   check("SHIP", "no inline event handlers or javascript: URLs (the CSP would block them)", !/<[^>]+\son[a-z]+\s*=/i.test(SRC.replace(/<script[\s\S]*?<\/script>/g, "")) && !/javascript:/i.test(SRC));
   check("SHIP", "manifest: Walker at the root scope", (() => { const mf = JSON.parse(read("manifest.webmanifest")); return mf.id === "/" && mf.scope === "/" && mf.start_url === "/"; })());
-  // cache.addAll fails atomically — one missing SHELL path and the install never caches any of them.
+  // A missing SHELL path now costs one optional file; for "./" or index.html it fails the install on
+  // purpose, which leaves the previous worker and its shell in control. Either way it should be on disk.
   const shellSrc = (sw.match(/var SHELL = \[([^\]]*)\]/) || [])[1] || "";
   const shell = [...shellSrc.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
   const missingShell = shell.filter((p) => !fs.existsSync(path.join(ROOT, p === "./" ? "index.html" : p)));
@@ -575,11 +605,16 @@ function finishSuite() {
       this.mode = (init && init.mode) || "cors";
     }
   }
+  /* The fake conflates a cache's NAME with an entry inside it: seed(name, "x") stands in for "a cache
+     with this name exists". That is faithful here only because sw.js touches the top level in exactly two
+     ways — caches.keys() and caches.delete(k) — and never opens a named cache to read one it did not just
+     create. Anything beyond the activate sweep would need a real two-level fake. */
   function makeCaches() {
     const store = new Map();
     const api = {
       puts: [],
       matches: [],
+      deleted: [],
       failPut: false,
       failMatch: false,
       open() {
@@ -603,16 +638,17 @@ function finishSuite() {
       },
       seed(url, body) { store.set(url, new Response(body, { status: 200 })); },
       keys() { return Promise.resolve([...store.keys()]); },
-      delete() { return Promise.resolve(true); },
+      delete(k) { api.deleted.push(k); store.delete(k); return Promise.resolve(true); },
     };
     return api;
   }
-  function load(caches, fetchImpl) {
+  function load(caches, fetchImpl, out) {
     const listeners = {};
+    let skips = 0;
     const self = {
       location: { origin: "walker.test" },
       addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
-      skipWaiting() { return Promise.resolve(); },
+      skipWaiting() { skips++; return Promise.resolve(); },
       clients: {
         matchAll() { return Promise.resolve([]); },
         claim() { return Promise.resolve(); },
@@ -621,8 +657,12 @@ function finishSuite() {
       registration: { showNotification() { return Promise.resolve(); } },
     };
     new Function("self", "caches", "fetch", "Response", "URL", "Request", read("sw.js"))(self, caches, fetchImpl, Response, HostURL, HostRequest);
+    if (out) { out.skips = () => skips; }
     return listeners;
   }
+  /* install and activate: one waitUntil promise is the whole observable outcome. */
+  function fireLife(listeners, type) { let out; (listeners[type] || []).forEach((fn) => fn({ waitUntil(p) { out = p; } })); return out; }
+  function fireMsg(listeners, data, ports) { (listeners.message || []).forEach((fn) => fn({ data: data, ports: ports })); }
   function fire(listeners, req) {
     let out;
     const ev = { request: req, respondWith(p) { out = p; }, waitUntil() {} };
@@ -706,6 +746,451 @@ function finishSuite() {
     const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
     const got = await settle(fire(listeners, ask("GET", "walker.test|/", "navigate")));
     check("SW", "a cache read that throws still fulfills as a network error", got.called && !got.err && isErr(got.res));
+  }
+
+  /* ---------- the install, the sweep, and the update channel ---------- */
+  {
+    const caches = makeCaches();
+    const listeners = load(caches, (url) => (url === "index.html" ? Promise.reject(new TypeError("offline")) : Promise.resolve(new Response("x", { status: 200 }))));
+    const got = await settle(fireLife(listeners, "install"));
+    check("SW", "the page itself is required: a shell fetch that fails for index.html fails the install, so the previous worker keeps control", got.called && !!got.err, { called: got.called, err: got.err && got.err.message });
+  }
+  {
+    /* The likelier real failure than a network rejection: Pages answers mid-deploy with a 404 or a 503.
+       That resolves, so it reaches the not-ok guard rather than the catch — a different branch, and the
+       one that was untested. A worker that activates with no page in its shell cannot serve the page
+       offline, which is the single guarantee it exists for. */
+    const caches = makeCaches();
+    const listeners = load(caches, (url) => Promise.resolve(new Response("nope", { status: url === "index.html" ? 404 : 200 })));
+    const got = await settle(fireLife(listeners, "install"));
+    check("SW", "the page itself is required on a 404 too, not only on a network rejection: the install fails and the page is not cached",
+      got.called && !!got.err && !caches.puts.some((p) => p.url === "index.html"), { called: got.called, err: got.err && got.err.message, puts: caches.puts.map((p) => p.url) });
+  }
+  {
+    const caches = makeCaches();
+    const listeners = load(caches, (url) => Promise.resolve(new Response("x", { status: url === "icon-512.png" ? 404 : 200 })));
+    const got = await settle(fireLife(listeners, "install"));
+    check("SW", "an optional shell file that answers 404 is not cached and does not abort the install", got.called && !got.err && caches.puts.length === 6 && !caches.puts.some((p) => p.url === "icon-512.png"), { err: got.err && got.err.message, puts: caches.puts.map((p) => p.url) });
+  }
+  {
+    /* "Offered, never taken" has to be true of the worker too. An install that skipped waiting took the
+       worker with no tap, swept the running build's shell out from under the open page, and left
+       registration.waiting empty — making the page's waiting branch dead code and leaving it nothing to
+       ask the new build's TAG. The LOAD line's message is the only promoter. */
+    const out = {};
+    const caches = makeCaches();
+    const listeners = load(caches, () => Promise.resolve(new Response("x", { status: 200 })), out);
+    const got = await settle(fireLife(listeners, "install"));
+    check("SW", "the install does not take the worker: no skipWaiting, so registration.waiting is really populated and only the tap promotes it",
+      got.called && !got.err && out.skips() === 0, { err: got.err && got.err.message, skips: out.skips() });
+  }
+  {
+    const caches = makeCaches();
+    const fetched = [];
+    const listeners = load(caches, (url, init) => { fetched.push({ url: url, init: init }); return url === "icon-512.png" ? Promise.reject(new TypeError("offline")) : Promise.resolve(new Response("x", { status: 200 })); });
+    const got = await settle(fireLife(listeners, "install"));
+    check("SW", "one bad optional shell file does not abort the install", got.called && !got.err && caches.puts.length === 6, { err: got.err && got.err.message, puts: caches.puts.length });
+    check("SW", "the install does not read the host's HTTP cache, so a new build's shell cannot be the last deploy's files", fetched.length === 7 && fetched.every((f) => f.init && f.init.cache === "reload"), fetched.map((f) => (f.init || {}).cache));
+  }
+  {
+    const caches = makeCaches();
+    caches.seed("now-shell-1.1.6", "x");
+    caches.seed("other-app-v1", "x");
+    const listeners = load(caches, () => Promise.resolve(new Response("x", { status: 200 })));
+    const got = await settle(fireLife(listeners, "activate"));
+    check("SW", "activate deletes older builds of this app and nothing else on the origin", got.called && !got.err && eq(caches.deleted, ["now-shell-1.1.6"]), caches.deleted);
+  }
+  {
+    const out = {};
+    const listeners = load(makeCaches(), () => Promise.resolve(new Response("x", { status: 200 })), out);
+    fireMsg(listeners, { type: "pull" });
+    check("SW", "a pull message does not wake a waiting worker — the update channel did not swallow the existing one", out.skips() === 0, out.skips());
+    fireMsg(listeners, { type: "SKIP_WAITING" });
+    check("SW", "the LOAD line's message wakes a waiting worker", out.skips() === 1, out.skips());
+    fireMsg(listeners, { type: "something_else" });
+    check("SW", "an unknown message does neither — the page cannot make the worker act by sending anything it likes", out.skips() === 1, out.skips());
+  }
+  {
+    /* The identity gate's one real input. The page asks a worker which build it is before it offers
+       anything, because a cold launch after a deploy is ALREADY the new build. The answer goes back down
+       the port the page sent, so it reaches the one asker and nothing is broadcast. */
+    const out = {};
+    const listeners = load(makeCaches(), () => Promise.resolve(new Response("x", { status: 200 })), out);
+    let replied = null;
+    fireMsg(listeners, { type: "TAG" }, [{ postMessage(d) { replied = d; } }]);
+    check("SW", "the worker says which build it is, down the port the page sent, and that tag is this build", eq(replied, { type: "TAG", tag: BUILD }), { replied: replied, build: BUILD });
+    check("SW", "being asked for the tag does not promote the worker — the question is not the tap", out.skips() === 0, out.skips());
+  }
+  {
+    const caches = makeCaches();
+    caches.seed("walker.test|/sw.js", "WORKER");
+    const listeners = load(caches, () => Promise.reject(new TypeError("offline")));
+    const got = await settle(fire(listeners, ask("GET", "walker.test|/sw.js", "cors")));
+    check("SW", "the browser's check for a new build is never answered by the worker", got.called === false && caches.matches.length === 0 && caches.puts.length === 0, { called: got.called, matches: caches.matches.length, puts: caches.puts.length });
+  }
+
+  /* ---------- UPDATE: how a home-screen walker learns a new build exists ----------
+     CORE.startShellUpdates takes everything it touches as arguments, so four listener fakes stand in
+     for the browser and none of this needs a page, a DOM or storage. The page-side wiring itself is
+     pinned by the SHIP greps, the way the rest of the app IIFE is. */
+  function target(extra) {
+    const l = {};
+    const t = {
+      addEventListener(type, fn) { (l[type] = l[type] || []).push(fn); },
+      removeEventListener(type, fn) { l[type] = (l[type] || []).filter((f) => f !== fn); },
+      emit(type) { (l[type] || []).slice().forEach((fn) => fn({ type: type })); },
+    };
+    return Object.assign(t, extra || {});
+  }
+  const spot = (protocol, hostname) => { const s = { protocol: protocol || "https:", hostname: hostname || "walker.test", reloads: 0, reload() { s.reloads++; } }; return s; };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const ticks = async (n) => { for (let i = 0; i < n; i++) await tick(); };
+  /* A two-port channel, the shape startShellUpdates asks a worker for its TAG down. Synchronous, so a
+     worker that answers resolves on the next microtask and a worker that does not resolves on the wait. */
+  function FakeChannel() {
+    const p1 = { onmessage: null }, p2 = { onmessage: null };
+    p1.postMessage = (d) => { if (p2.onmessage) p2.onmessage({ data: d }); };
+    p2.postMessage = (d) => { if (p1.onmessage) p1.onmessage({ data: d }); };
+    this.port1 = p1; this.port2 = p2;
+  }
+  /* A worker that answers {type:"TAG"} the way sw.js does, rather than carrying the tag as a field. */
+  const answersTag = (state, tag) => { const w = target({ state: state }); w.postMessage = (msg, ports) => { if (msg && msg.type === CORE.TAG_ASK && ports && ports[0]) ports[0].postMessage({ type: "TAG", tag: tag }); }; return w; };
+
+  {
+    const at = (iso) => new Date(iso);
+
+    /* ---- the one clause that decides whether a LOAD line is ever shown ---- */
+    check("UPDATE", "the first install offers nothing — there is no old build running to replace",
+      CORE.shouldOfferReload({ hadController: false, controllerChanged: true }) === false &&
+      CORE.shouldOfferReload({ hadController: false, workerState: "installed" }) === false);
+    check("UPDATE", "an open page offers when a new worker is ready — both paths a real deploy takes",
+      CORE.shouldOfferReload({ hadController: true, workerState: "installed" }) === true &&
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true }) === true);
+    check("UPDATE", "installing and activating do not offer — a half-installed worker puts no LOAD line on screen",
+      CORE.shouldOfferReload({ hadController: true, workerState: "installing" }) === false &&
+      CORE.shouldOfferReload({ hadController: true, workerState: "activating" }) === false);
+
+    /* ---- which origins get a worker at all ---- */
+    check("UPDATE", "https anywhere and localhost register; a plain http host does not",
+      CORE.secureForServiceWorker({ protocol: "https:", hostname: "walker.test" }) === true &&
+      CORE.secureForServiceWorker({ protocol: "http:", hostname: "localhost" }) === true &&
+      CORE.secureForServiceWorker({ protocol: "http:", hostname: "files.example" }) === false);
+    check("UPDATE", "127.0.0.1 is deliberately left out — it is the origin the e2e suite serves its no-worker scenarios from",
+      CORE.secureForServiceWorker({ protocol: "http:", hostname: "127.0.0.1" }) === false);
+
+    /* ---- the dark window: the check still runs, the offer is held ---- */
+    check("UPDATE", "the offer is held in the dark window and asked at first light",
+      CORE.updateOffer(true, at("2026-09-24T06:00:00Z")) === "held" &&
+      CORE.updateOffer(true, at("2026-09-24T10:00:00Z")) === "ready" &&
+      CORE.updateOffer(false, at("2026-09-24T10:00:00Z")) === "none",
+      [CORE.updateOffer(true, at("2026-09-24T06:00:00Z")), CORE.updateOffer(true, at("2026-09-24T10:00:00Z")), CORE.updateOffer(false, at("2026-09-24T10:00:00Z"))]);
+    check("UPDATE", "the window is the ET wall clock, not a stored UTC hour — the winter pair moves with it",
+      CORE.updateOffer(true, at("2026-12-01T07:00:00Z")) === "held" &&
+      CORE.updateOffer(true, at("2026-12-01T06:00:00Z")) === "ready",
+      [CORE.updateOffer(true, at("2026-12-01T07:00:00Z")), CORE.updateOffer(true, at("2026-12-01T06:00:00Z"))]);
+
+    /* ---- the row on screen: the three values the page paints, so the promise is not a string ----
+       updateOffer's "held" only mattered if something withheld the button. These assert the rendered
+       triple instead, one check per state: the LOAD button cannot be shown at 03:00 ET and still pass. */
+    check("UPDATE", "no offer renders nothing at all — no row, no text, no button",
+      eq(CORE.updateRow("none"), { hidden: true, text: "", buttonHidden: true }), CORE.updateRow("none"));
+    check("UPDATE", "held renders the line with its ET end stamp and WITHHOLDS the button — nothing is asked at 03:00 ET",
+      eq(CORE.updateRow("held"), { hidden: false, text: "New build ready — held until 06:00 ET", buttonHidden: true }), CORE.updateRow("held"));
+    check("UPDATE", "ready renders the line and the button, and that is the only state that does",
+      eq(CORE.updateRow("ready"), { hidden: false, text: "New build ready", buttonHidden: false }), CORE.updateRow("ready"));
+    check("UPDATE", "an open UNDO window withholds the button: the act it guards is already committed and a reload would make it permanently un-undoable",
+      eq(CORE.updateRow("ready", true), { hidden: false, text: "New build ready — after the UNDO", buttonHidden: true }), CORE.updateRow("ready", true));
+    check("UPDATE", "the dark window beats an open UNDO window, and no state but ready ever shows the button",
+      CORE.updateRow("held", true).buttonHidden === true && CORE.updateRow("none", true).hidden === true && CORE.updateRow("none", true).buttonHidden === true &&
+      ["none", "held", "ready"].filter((s) => !CORE.updateRow(s).buttonHidden).join() === "ready");
+
+    /* ---- the tap's rescue: the operator's own input is never what a reload costs (standing law 4) ----
+       Only the DUMP box used to be kept. A half-set floor reading, the STUCK split box and a
+       typed-but-unsaved door URL or key died on the reload while the page's comment claimed otherwise. */
+    check("UPDATE", "the DUMP box's unsent words are kept, and whitespace is not words — the README's one stated promise, now asserted",
+      (CORE.shellRescue({ box: "unsent" }) || {}).box === "unsent" && CORE.shellRescue({ box: "\n \t " }) === null,
+      [CORE.shellRescue({ box: "unsent" }), CORE.shellRescue({ box: "\n \t " })]);
+    check("UPDATE", "a half-set floor reading is kept by vector, and a non-number is not a reading",
+      eq(CORE.shellRescue({ draft: { family: 0, energy: 3, control: "4", junk: 9 } }), { draft: { family: 0, energy: 3 } }),
+      CORE.shellRescue({ draft: { family: 0, energy: 3, control: "4", junk: 9 } }));
+    check("UPDATE", "the STUCK split box, which start it was breaking down, and a typed-but-unsaved door URL or key are all kept",
+      eq(CORE.shellRescue({ split: "step one\nstep two", pick: "s-1", url: "https://door.test/exec", key: "k-1" }),
+        { split: "step one\nstep two", pick: "s-1", url: "https://door.test/exec", key: "k-1" }),
+      CORE.shellRescue({ split: "step one\nstep two", pick: "s-1", url: "https://door.test/exec", key: "k-1" }));
+    check("UPDATE", "nothing typed anywhere is null, not an empty object — the stash is cleared rather than left for the next boot to re-populate",
+      CORE.shellRescue({ box: "", split: "", pick: null, url: "", key: "", draft: {} }) === null && CORE.shellRescue() === null && CORE.shellRescue({}) === null);
+    {
+      /* The tap itself, driven for real with a fake store and a fake shell — the one thing a grep for
+         `$("updGo").onclick` could never see: that the handler actually applies, and rescues first. */
+      const calls = [];
+      CORE.loadTap({
+        typed: { box: "half a thought", split: "one\ntwo", pick: "s-9", url: "https://door.test/exec", key: "k-1", draft: { family: 2, energy: 4 } },
+        stash: (r) => calls.push(["stash", r]),
+        apply: () => calls.push(["apply", null]),
+      });
+      check("UPDATE", "the LOAD tap stashes what a reload would drop and THEN applies — a handler that returns early fails here, not only on a phone",
+        calls.length === 2 && calls[0][0] === "stash" && calls[1][0] === "apply" &&
+        eq(calls[0][1], { box: "half a thought", split: "one\ntwo", pick: "s-9", url: "https://door.test/exec", key: "k-1", draft: { family: 2, energy: 4 } }), calls);
+      const bare = [];
+      CORE.loadTap({ typed: {}, stash: (r) => bare.push(["stash", r]), apply: () => bare.push(["apply", null]) });
+      check("UPDATE", "a tap with nothing open still applies — the rescue is not a gate on the tap", eq(bare, [["stash", null], ["apply", null]]), bare);
+    }
+
+    /* ---- the tap ---- */
+    {
+      let posted = null;
+      const worker = { state: "installed", postMessage(mm) { posted = mm; } };
+      const sw = target({});
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: { waiting: worker }, serviceWorker: sw, location: loc });
+      check("UPDATE", "LOAD wakes the waiting worker and loads only once it has the page", eq(posted, { type: CORE.SKIP_WAITING }) && loc.reloads === 0, { posted: posted, reloads: loc.reloads });
+      sw.emit("controllerchange");
+      sw.emit("controllerchange");
+      check("UPDATE", "two controllerchange events are one reload", loc.reloads === 1, loc.reloads);
+    }
+    {
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: {}, serviceWorker: target({}), location: loc });
+      const loc2 = spot();
+      CORE.applyShellUpdate({ registration: null, serviceWorker: target({}), location: loc2 });
+      check("UPDATE", "LOAD loads immediately when there is no waiting worker — and when the registration handle was lost", loc.reloads === 1 && loc2.reloads === 1, [loc.reloads, loc2.reloads]);
+    }
+    {
+      const worker = { state: "activated", postMessage() {} };
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: { waiting: worker }, serviceWorker: target({}), location: loc });
+      check("UPDATE", "LOAD loads immediately when the waiting worker has already claimed the page", loc.reloads === 1, loc.reloads);
+    }
+    {
+      const worker = { state: "installed", postMessage() { throw new TypeError("gone"); } };
+      const sw = target({});
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: { waiting: worker }, serviceWorker: sw, location: loc });
+      const after = loc.reloads;
+      sw.emit("controllerchange");
+      check("UPDATE", "a worker that refuses the message still loads, exactly once", after === 1 && loc.reloads === 1, [after, loc.reloads]);
+    }
+    {
+      /* controllerchange is the signal but it is the browser's to send: if activate throws under storage
+         pressure, or iOS does not deliver it in a standalone window, LOAD must not be a dead button with
+         no feedback. Now that the worker really waits, this is the live path, not a corner. */
+      const worker = { state: "installed", postMessage() {} };
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: { waiting: worker }, serviceWorker: target({}), location: loc, applyWaitMs: 0 });
+      check("UPDATE", "LOAD does not reload before the worker has the page", loc.reloads === 0, loc.reloads);
+      await ticks(2);
+      check("UPDATE", "LOAD is never a dead button: no controllerchange inside the bounded wait and it loads anyway", loc.reloads === 1, loc.reloads);
+    }
+    {
+      const worker = { state: "installed", postMessage() {} };
+      const sw = target({});
+      const loc = spot();
+      CORE.applyShellUpdate({ registration: { waiting: worker }, serviceWorker: sw, location: loc, applyWaitMs: 0 });
+      sw.emit("controllerchange");
+      await ticks(2);
+      check("UPDATE", "the real controllerchange cancels the fallback — one reload, not two", loc.reloads === 1, loc.reloads);
+    }
+
+    /* ---- the mount: registration, the three triggers, and what each worker state does ---- */
+    function mount(o) {
+      o = o || {};
+      const st = { updated: 0, offers: 0 };
+      const reg = target({ waiting: o.waiting || null, installing: o.installing || null, update() { st.updated++; return Promise.resolve(); } });
+      const sw = target({ controller: o.controller === undefined ? {} : o.controller, register() { st.registered = true; return Promise.resolve(reg); } });
+      const doc = target({ visibilityState: "visible" });
+      const win = target({});
+      const loc = spot(o.protocol, o.hostname);
+      const h = CORE.startShellUpdates({ navigator: { serviceWorker: sw }, location: loc, document: doc, window: win, build: o.build, MessageChannel: o.MessageChannel || FakeChannel, tagWaitMs: o.tagWaitMs, applyWaitMs: o.applyWaitMs }, () => { st.offers++; });
+      return Object.assign(st, { reg: reg, sw: sw, doc: doc, win: win, loc: loc, h: h });
+    }
+
+    {
+      const m = mount({ protocol: "http:", hostname: "files.example" });
+      await tick();
+      m.h.stop();
+      m.h.apply();
+      check("UPDATE", "an insecure origin registers nothing and stop()/apply() are safe no-ops", !m.registered && m.loc.reloads === 0 && m.updated === 0, { registered: !!m.registered, reloads: m.loc.reloads });
+    }
+    {
+      const m = mount();
+      await tick();
+      check("UPDATE", "a check runs as soon as the registration lands — a cold launch onto a stale shell asks at once", m.updated === 1, m.updated);
+      m.doc.visibilityState = "hidden";
+      m.doc.emit("visibilitychange");
+      check("UPDATE", "going away asks nothing", m.updated === 1, m.updated);
+      m.doc.visibilityState = "visible";
+      m.doc.emit("visibilitychange");
+      m.win.emit("focus");
+      m.win.emit("pageshow");
+      check("UPDATE", "coming forward asks three ways, with no floor", m.updated === 4, m.updated);
+      m.h.stop();
+      m.doc.emit("visibilitychange");
+      m.win.emit("focus");
+      check("UPDATE", "stop() unsubscribes", m.updated === 4, m.updated);
+    }
+    {
+      const m = mount();
+      await tick();
+      const w = target({ state: "installing" });
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      check("UPDATE", "an installing worker is not an offer", m.offers === 0, m.offers);
+      w.state = "installed";
+      w.emit("statechange");
+      check("UPDATE", "a ready worker is one offer", m.offers === 1, m.offers);
+    }
+    {
+      const m = mount();
+      await tick();
+      m.reg.installing = target({ state: "installed" });
+      m.reg.emit("updatefound");
+      check("UPDATE", "a worker already installed when it is watched still offers, with no event coming — the Safari-resume case", m.offers === 1, m.offers);
+    }
+    {
+      const m = mount({ waiting: target({ state: "installed" }) });
+      await tick();
+      check("UPDATE", "a worker already waiting at register time is watched, with no updatefound ever fired", m.offers === 1, m.offers);
+      m.sw.emit("controllerchange");
+      m.sw.emit("controllerchange");
+      check("UPDATE", "the offer is latched — the row cannot be re-raised or double-rendered", m.offers === 1, m.offers);
+    }
+    {
+      /* The Safari-resume case the live controller re-read exists for, and the only vector that
+         separates it from the captured flag: nothing controlled this page at register time, a worker
+         reaches "installed" while the app is hidden, and the page IS controlled by the time its state
+         is read. The captured flag suppresses the first install; this read catches the resume. */
+      const m = mount({ controller: null });
+      await tick();
+      const w = target({ state: "installing" });
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      m.sw.controller = {};                         // controlled now, though it was not at register
+      w.state = "installed";
+      w.emit("statechange");
+      check("UPDATE", "uncontrolled at register time, controlled by the time a worker installs: still one offer — the live read, not the captured flag", m.offers === 1, m.offers);
+    }
+    {
+      /* The latch the first install arms. Nothing to reload when the first worker claims the page;
+         the NEXT controllerchange is a real new build and does offer. */
+      const m = mount({ controller: null });
+      await tick();
+      m.sw.emit("controllerchange");
+      check("UPDATE", "the first install claiming the page offers nothing", m.offers === 0, m.offers);
+      m.sw.emit("controllerchange");
+      check("UPDATE", "the controllerchange after the first install does offer — the latch was armed, not left false", m.offers === 1, m.offers);
+    }
+
+    /* ---- build identity: the clause that tells "you are stale" from "the worker just caught up" ----
+       A cold launch after a deploy is served network-first by the worker that is ALREADY installed —
+       sw.js:62 here and `git show HEAD:sw.js` both fetch a navigation with cache:"no-cache" — so the
+       page that boots IS the new build, with its new BUILD in the header, while the OLD worker is still
+       the controller. The browser then finds the new sw.js, installs it, skipWaiting()s and claims the
+       page: statechange "installed" and controllerchange both arrive. A decision made on the controller
+       transition alone cannot tell that apart from a genuinely stale page, so it puts "New build ready"
+       under the box on a page that has nothing to load, after every deploy, on the one screen whose
+       whole value is that the line is true. The deleted checkBuild() held the only identity comparison
+       in the app (m[1] !== BUILD) and nothing replaced it.
+       So the offer is gated on identity, not on a transition: the running page's BUILD against the new
+       worker's TAG. EQUAL suppresses. DIFFERENT still offers. UNKNOWN still offers — standing law 1,
+       gating fails open, never closed; a page that cannot learn the tag must not go silent on updates.
+       (Which field carries the tag is the fix's choice — a {type:"TAG"} reply, the scriptURL, the fetched
+       bytes. These fakes name it `workerTag` on the decision and `tag` on the worker; move them with it.) */
+    check("UPDATE", "the running page's BUILD equals the new worker's TAG — no offer, however the controller moved",
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.7" }) === false &&
+      CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.7" }) === false &&
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.6", workerTag: "1.1.7" }) === true &&
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true }) === true,
+      {
+        equal_controllerchange: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.7" }),
+        equal_installed: CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.7" }),
+        stale_offers: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.6", workerTag: "1.1.7" }),
+        unknown_offers: CORE.shouldOfferReload({ hadController: true, controllerChanged: true }),
+      });
+    {
+      /* The same thing as the sequence a real deploy actually runs, end to end through the mount:
+         old worker controlling, page already the new build, new worker installs and claims. */
+      const m = mount({ build: "1.1.7" });
+      await tick();
+      const w = target({ state: "installing", tag: "1.1.7" });
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      w.state = "installed";
+      w.emit("statechange");
+      m.sw.emit("controllerchange");
+      await ticks(3);
+      check("UPDATE", "a cold launch after a deploy offers nothing — the page boots as the new build and the worker only catches up", m.offers === 0, m.offers);
+    }
+    {
+      /* The counterpart, so the check above cannot pass by never offering: a page left open across a
+         deploy is genuinely stale, and that is the case the LOAD line exists for. */
+      const m = mount({ build: "1.1.6" });
+      await tick();
+      const w = target({ state: "installing", tag: "1.1.7" });
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      w.state = "installed";
+      w.emit("statechange");
+      await ticks(3);
+      check("UPDATE", "a page left open across a deploy is stale and does get the one offer", m.offers === 1, m.offers);
+    }
+
+    /* ---- how the tag is actually learned: a message, bounded, and never a silent failure ----
+       The tag arrives AFTER the transition that prompted it, so the decision is taken when it resolves.
+       The wait is bounded and its timeout resolves UNKNOWN, which offers (standing law 1): an identity
+       query must not become a new way for updates to go quiet. */
+    {
+      const env = { MessageChannel: FakeChannel };
+      const silent = { state: "installed", postMessage() {} };
+      const broken = { state: "installed", postMessage() { throw new TypeError("gone"); } };
+      const got = await Promise.all([
+        CORE.askWorkerTag(answersTag("installed", "1.1.9"), env),
+        CORE.askWorkerTag(silent, env, 0),
+        CORE.askWorkerTag(broken, env),
+        CORE.askWorkerTag(null, env),
+        CORE.askWorkerTag({ tag: "1.1.4" }, { MessageChannel: null }),
+      ]);
+      check("UPDATE", "a worker answers which build it is; one that stays silent, cannot be asked, or is not there resolves UNKNOWN — never a hang",
+        eq(got, ["1.1.9", "", "", "", "1.1.4"]), got);
+    }
+    {
+      /* The deploy sequence again, with the tag LEARNED by message the way sw.js answers it, rather
+         than handed over as a field on a fake. This is the plumbing the production page runs. */
+      const m = mount({ build: "1.1.7" });
+      await tick();
+      const w = answersTag("installing", "1.1.7");
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      w.state = "installed";
+      w.emit("statechange");
+      m.sw.emit("controllerchange");
+      await ticks(3);
+      check("UPDATE", "the tag learned by message suppresses the offer too — the gate does not depend on a fake's field", m.offers === 0, m.offers);
+    }
+    {
+      const m = mount({ build: "1.1.6" });
+      await tick();
+      const w = answersTag("installing", "1.1.7");
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      w.state = "installed";
+      w.emit("statechange");
+      await ticks(3);
+      check("UPDATE", "the tag learned by message still offers when the page really is behind it", m.offers === 1, m.offers);
+    }
+    {
+      /* The worker never answers. The gate fails OPEN: the offer stands rather than the feature going
+         silent on a phone whose worker cannot be asked. */
+      const m = mount({ build: "1.1.7", tagWaitMs: 0 });
+      await tick();
+      const w = target({ state: "installing" });
+      w.postMessage = () => {};
+      m.reg.installing = w;
+      m.reg.emit("updatefound");
+      w.state = "installed";
+      w.emit("statechange");
+      await ticks(4);
+      check("UPDATE", "a tag that never arrives still offers — the identity gate fails open, never closed and never silent", m.offers === 1, m.offers);
+    }
   }
 
   finishSuite();
