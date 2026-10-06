@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Only this page's own two scripts run (pinned by hash: node test.js --pin-csp). The phone talks to
      itself and to the door (https; http only on this machine, for tests) and to nothing else. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-b1Hd6G19SxdGF890WPsEGFkjXe+/wwGWt6MDLkBl7qE=' 'sha256-OAAhwEsidpGGBaNvSohS+/iclFSw2n/B8CVZ8S6kOVg='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-+JJGVRgiZe3RHNmsTl4LjhDnPdzl82pSrrEEu5nS/oI=' 'sha256-PFU0lN5Ai38LCdwt0uedB1lTo1Omg33LUb1uG1QA5MY='; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -181,7 +181,7 @@ textarea.field{font-family:var(--sans);font-size:17.5px;min-height:96px;resize:v
 <body>
 <div class="phone" id="phone">
   <div class="status">
-    <span class="ver">NOW <b id="verNum">1.1.7</b></span>
+    <span class="ver">NOW <b id="verNum">1.1.8</b></span>
     <span class="lamps">
       <button class="lamp" id="lampOut" aria-label="out: what this phone sends the stack"><span class="lb">out</span><i class="dot"></i></button>
       <button class="lamp" id="lampIn" aria-label="in: what the stack sends this phone"><span class="lb">in</span><i class="dot"></i></button>
@@ -759,6 +759,35 @@ const CORE = (function () {
     return { hidden: false, text: UPDATE_READY, buttonHidden: false };
   }
 
+  /* A door key is never a Google API key. Hint only — the key is still saved (standing law 4). */
+  function doorKeyGoogleShape(key) {
+    const t = String(key || "").trim();
+    return !!(t && (t.startsWith("AIza") || t.startsWith("AQ.")));
+  }
+  function doorKeyGoogleSaveToast(key) {
+    if (!doorKeyGoogleShape(key)) return null;
+    return "Saved. That looks like a Google API key, not your door key; if Sync says 'Door key refused', that's why.";
+  }
+  function doorKeyGoogleSyncNote(key) {
+    if (!doorKeyGoogleShape(key)) return "";
+    return " That looks like a Google API key, not your door key.";
+  }
+
+  /* Cold launch only: when a worker is waiting and the page is safe to reload, apply without LOAD. */
+  function shouldAutoApplyShellUpdate(ctx) {
+    ctx = ctx || {};
+    if (!ctx.coldLaunch) return false;
+    if (isNight(ctx.now)) return false;
+    if (ctx.undoBusy) return false;
+    if (shellRescue(ctx.typed || {})) return false;
+    return true;
+  }
+  function shouldQuietShellActivate(state) {
+    if (shouldOfferReload(state)) return true;
+    if (!state.pageBuild || !state.workerTag) return false;
+    return String(state.pageBuild) === String(state.workerTag) && state.workerState === "installed";
+  }
+
   /* Everything a reload would otherwise drop, gathered in one place. The DUMP box already had a home
      in the store; the floor draft, the STUCK split box and a typed-but-unsaved door URL or key did
      not, and the tap threw them away while the page's own comment claimed it never did. Returns null
@@ -828,21 +857,45 @@ const CORE = (function () {
      Returns { stop, apply } — apply() is the tap. CORE holds no state and the page may carry no test
      hook, so the registration is the return value's closure, not a module variable: losing it is the
      one way this fails silently, by reopening the OLD shell on a tap. */
-  function startShellUpdates(env, onOffer) {
+  function startShellUpdates(env, onOffer, onAutoApplied) {
     const nav = env.navigator;
     if (!nav.serviceWorker || !secureForServiceWorker(env.location)) return { stop: () => {}, apply: () => {} };
     const build = env.build ? String(env.build) : "";
     let offered = false;
+    let autoApplied = false;
+    let coldLaunch = true;
     const offer = () => { if (offered) return; offered = true; onOffer(); };
+    const typedSnap = () => (typeof env.typed === "function" ? env.typed() : env.typed) || {};
+    const undoBusy = () => !!(typeof env.undoBusy === "function" ? env.undoBusy() : env.undoBusy);
+    const now = () => (typeof env.now === "function" ? env.now() : env.now) || new Date();
+    let reg = null;
+    const applyWaiting = () => {
+      if (autoApplied) return;
+      autoApplied = true;
+      if (onAutoApplied) onAutoApplied();
+      applyShellUpdate({ registration: reg, serviceWorker: nav.serviceWorker, location: env.location, setTimeout: env.setTimeout, clearTimeout: env.clearTimeout, applyWaitMs: env.applyWaitMs });
+    };
     let seen = null;                                // the newest worker this page has been told about
     /* With a build to compare against, the decision waits for the tag; with none there is nothing to
        wait for and nothing to learn, so that path stays synchronous and offers (law 1 again). */
     const decide = (s, worker) => {
-      if (offered) return;
-      if (!build) { if (shouldOfferReload(s)) offer(); return; }
+      if (offered || autoApplied) return;
+      const finishCold = () => { coldLaunch = false; };
+      if (!build) {
+        if (shouldOfferReload(s)) offer();
+        finishCold();
+        return;
+      }
       askWorkerTag(worker, env, env.tagWaitMs).then((tag) => {
         if (worker && tag) { try { worker.tag = tag; } catch (e) {} }
-        if (shouldOfferReload(Object.assign({ pageBuild: build, workerTag: tag }, s))) offer();
+        const state = Object.assign({ pageBuild: build, workerTag: tag }, s);
+        if (coldLaunch && shouldAutoApplyShellUpdate({ coldLaunch: true, typed: typedSnap(), now: now(), undoBusy: undoBusy() }) && shouldQuietShellActivate(state)) {
+          finishCold();
+          applyWaiting();
+          return;
+        }
+        finishCold();
+        if (shouldOfferReload(state)) offer();
       });
     };
     let hadController = !!nav.serviceWorker.controller;
@@ -851,7 +904,6 @@ const CORE = (function () {
       hadController = true;                         // a first install arms the latch without offering
     };
     nav.serviceWorker.addEventListener("controllerchange", onController);
-    let reg = null;
     const watch = (worker) => {
       if (!worker) return;
       seen = worker;
@@ -890,6 +942,7 @@ const CORE = (function () {
     wire, pullBody, classify, errorHint, doorUrlProblem, shownRev, answerFollowup, applyAnswerFinal, PARKED_CAP, capParked,
     emptyStore, normalize, migrate, mergePull, cardExpired, openCards, safeId, isoOr, cleanEnvelope, createCardScheduler,
     SKIP_WAITING, TAG_ASK, UPDATE_READY, UPDATE_HELD, UPDATE_BUSY, secureForServiceWorker, shouldOfferReload, updateOffer, updateRow,
+    doorKeyGoogleShape, doorKeyGoogleSaveToast, doorKeyGoogleSyncNote, shouldAutoApplyShellUpdate, shouldQuietShellActivate,
     shellRescue, loadTap, askWorkerTag, applyShellUpdate, startShellUpdates };
 })();
 </script>
@@ -898,7 +951,7 @@ const CORE = (function () {
 (function () {
   "use strict";
   const C = CORE;
-  const BUILD = "1.1.7";
+  const BUILD = "1.1.8";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const nowIso = () => new Date().toISOString();
@@ -1296,9 +1349,14 @@ const CORE = (function () {
   /* The door's doGet answers "walker-door" and nothing else; doPost never does. That reply to a POST
      means a redirect on the way turned the request into a plain GET — a knock. */
   const knocked = (hint) => /^HTTP \d+: walker-door$/.test(String(hint || ""));
-  const failName = (code, hint) => (code === "bad_response" && doorWorked()
-    ? (knocked(hint) ? "The door got a knock, not the request — Google redirected it on the way. Kept on this phone; trying again" : "Google sent an error page instead of the door's answer — a hiccup on its side; trying again")
-    : FAIL[code] || "Door said " + code);
+  const failName = (code, hint) => {
+    if (code === "bad_response" && doorWorked()) {
+      return knocked(hint) ? "The door got a knock, not the request — Google redirected it on the way. Kept on this phone; trying again" : "Google sent an error page instead of the door's answer — a hiccup on its side; trying again";
+    }
+    const base = FAIL[code] || "Door said " + code;
+    if (code === "unauthorized") return base + C.doorKeyGoogleSyncNote(doorKey());
+    return base;
+  };
   function outWhy() {
     if (!keyed()) return noDoorWhy();
     if (C.isNight()) return "Dark until 06:00 ET";
@@ -1614,6 +1672,8 @@ const CORE = (function () {
     Object.assign(S.sync, { err_out: null, err_in: null, err_out_at: null, err_in_at: null, err_out_hint: null, err_in_hint: null });
     if (!keyed()) { toast(noDoorWhy() + " — still needed."); commit(); return; }
     commit();
+    const saveHint = C.doorKeyGoogleSaveToast(k || doorKey());
+    if (saveHint) { toast(saveHint); syncNow(); return; }
     syncNow();
   }
   /* The door answers a GET with no key by naming itself. Proves the URL, touches nothing. */
@@ -1825,8 +1885,15 @@ const CORE = (function () {
      asks whether sw.js changed, and offers the new build once a worker is ready. No hourly floor: the
      ask is a conditional GET of a small worker file, where the old check pulled the whole page once an
      hour and then reloaded the phone on its own. */
+  const shellTyped = () => ({
+    box: $("dumpBox").value, split: $("splitBox").value, pick: splitPick,
+    url: dirty.url ? $("doorUrlBox").value : "", key: dirty.key ? $("doorKeyBox").value : "", draft: draft,
+  });
   const shellUp = C.startShellUpdates(
-    { navigator: navigator, location: location, document: document, window: window, build: BUILD, MessageChannel: MessageChannel },
+    {
+      navigator: navigator, location: location, document: document, window: window, build: BUILD, MessageChannel: MessageChannel,
+      typed: shellTyped, undoBusy: undoOpen, now: () => new Date(),
+    },
     () => { updOffered = true; render(); }
   );
   /* The tap is the act, and it keeps your own input: unsent words, a half-set floor reading, the

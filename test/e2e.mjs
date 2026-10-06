@@ -1096,18 +1096,19 @@ function openTwoBuildHost() {
   const B = pin(A.split(`const BUILD = "${BUILD_A}"`).join(`const BUILD = "${BUILD_B}"`));
   const WB = W.split(`var TAG = "${BUILD_A}"`).join(`var TAG = "${BUILD_B}"`);
   if (!(B !== A && WB !== W && /const BUILD = "[^"]+-b"/.test(B))) throw new Error("the second build's bytes really differ");
-  let serveB = false;
+  let servePageB = false, serveWorkerB = false;
   const host2 = http.createServer((q, r) => {
     const p2 = q.url.split("?")[0];
-    if (serveB && (p2 === "/" || p2 === "/index.html")) { r.writeHead(200, { "Content-Type": "text/html" }); r.end(B); return; }
-    if (serveB && p2 === "/sw.js") { r.writeHead(200, { "Content-Type": "text/javascript" }); r.end(WB); return; }
+    if (servePageB && (p2 === "/" || p2 === "/index.html")) { r.writeHead(200, { "Content-Type": "text/html" }); r.end(B); return; }
+    if (serveWorkerB && p2 === "/sw.js") { r.writeHead(200, { "Content-Type": "text/javascript" }); r.end(WB); return; }
     serveStatic(q, r);
   });
   return {
     BUILD_A, BUILD_B,
     listen: () => new Promise((ok) => host2.listen(0, "127.0.0.1", ok)),
     url: () => `http://localhost:${host2.address().port}/`,
-    deploy: () => { serveB = true; },
+    deploy: () => { servePageB = true; serveWorkerB = true; },
+    deployWorker: () => { serveWorkerB = true; },
     close: () => { host2.closeAllConnections?.(); host2.close(); },
   };
 }
@@ -1123,6 +1124,51 @@ async function phoneOnBuild(url, timeIso) {
   await until(async () => !!(await p.evaluate(() => navigator.serviceWorker.controller)), "the page is under the worker");
   return p;
 }
+const NOON_ET = "2026-09-24T16:00:00Z";
+const DARK_ET = "2026-09-25T07:00:00Z";   // 03:00 ET, the same instant the dark-window block injects
+/* A worker is left waiting while its page stays open, so the next document is a real cold launch
+   onto a registration that already has something to apply. */
+async function holdWaitingWorker(host2, deploy) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const held = await ctx.newPage();
+  held.on("pageerror", (e) => errors.push(e.message));
+  await held.clock.install({ time: new Date(NOON_ET) });
+  await held.goto(host2.url());
+  await held.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await held.evaluate(() => navigator.serviceWorker.controller))) await held.reload();
+  await until(async () => !!(await held.evaluate(() => navigator.serviceWorker.controller)), "the open page is under the worker");
+  deploy();
+  await until(async () => {
+    await held.evaluate(() => window.dispatchEvent(new Event("focus")));
+    return await held.evaluate(async () => {
+      const r = await navigator.serviceWorker.getRegistration();
+      return !!(r && r.waiting);
+    });
+  }, "a new worker is waiting", 25000);
+  await held.evaluate(() => {
+    const set = localStorage.setItem.bind(localStorage);
+    const rm = localStorage.removeItem.bind(localStorage);
+    const freeze = (k) => k === "now.store.v1" || k === "now.walker.rescue";
+    localStorage.setItem = (k, v) => { if (freeze(k)) return; return set(k, v); };
+    localStorage.removeItem = (k) => { if (freeze(k)) return; return rm(k); };
+  });
+  return { ctx, held };
+}
+async function openCold(ctx, url, timeIso, seed) {
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => errors.push(e.message));
+  if (seed) await p.addInitScript((s) => {
+    if (sessionStorage.getItem("__coldseed")) return;
+    for (const k in s) localStorage.setItem(k, s[k]);
+    sessionStorage.setItem("__coldseed", "1");
+  }, seed);
+  await p.clock.install({ time: new Date(timeIso) });
+  let navs = 0;
+  p.on("framenavigated", (frame) => { if (frame === p.mainFrame() && frame.url().startsWith(url)) navs++; });
+  await p.goto(url);
+  return { page: p, navs: () => navs };
+}
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function offerArrives(p) {
   await until(async () => {
     await p.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -1208,6 +1254,162 @@ await block("03:00 ET the new build is held and the LOAD button is withheld unti
 });
 
 /* An open UNDO window is the one piece of state a reload would make permanent. The button waits. */
+await block("saving an AIza-shaped key shows the hint and still stores the key", async () => {
+  const d = await startMockDoor({ key: "live-test-key" });
+  const shaped = "AIza" + "Q".repeat(35);
+  const { page: p } = await phone({ "now.door_url": d.url });
+  await setDoor(p, d.url, shaped);
+  await until(async () => /Google API key/.test(await toastText(p)), "hint toast");
+  const shown = await toastText(p);
+  assert(!shown.includes("QQQQ"), "the toast never contains the key", shown);
+  const stored = await p.evaluate(() => localStorage.getItem("now.door_key"));
+  assert(stored === shaped, "the key is still saved on this phone", stored);
+  await p.context().close(); await d.close();
+});
+
+await block("saving an AQ.-shaped key shows the hint and keeps the key", async () => {
+  const d = await startMockDoor({ key: "k-shape-aq" });
+  const shaped = "AQ." + "Z".repeat(20);
+  const { page: p } = await phone({ "now.door_url": d.url });
+  await setDoor(p, d.url, shaped);
+  await until(async () => /Google API key/.test(await toastText(p)), "hint toast");
+  const shown = await toastText(p);
+  assert(!shown.includes("ZZZ"), "the toast never contains the key", shown);
+  const kept = await p.evaluate((k) => localStorage.getItem("now.door_key") === k, shaped);
+  assert(kept, "the key is still saved on this phone");
+  await p.context().close(); await d.close();
+});
+
+await block("saving a normal 43-character key shows no hint", async () => {
+  const d = await startMockDoor({ key: "k-shape-plain" });
+  const plain = "k-" + "x".repeat(41);
+  const { page: p } = await phone({ "now.door_url": d.url });
+  await setDoor(p, d.url, plain);
+  await until(async () => /Door key refused/.test(await toastText(p)), "the sync settled");
+  const shown = await toastText(p);
+  assert(!/Google API key/.test(shown), "a normal key shows no hint", shown);
+  assert(!shown.includes("xxxx"), "the toast never contains the key", shown);
+  const kept = await p.evaluate((k) => localStorage.getItem("now.door_key") === k, plain);
+  assert(kept, "the key is still saved on this phone");
+  assert(plain.length === 43, "the key is 43 characters");
+  await p.context().close(); await d.close();
+});
+
+await block("a cold launch with nothing typed auto-loads a waiting second build in one reload", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const url = host2.url();
+  const noon = "2026-09-24T16:00:00Z";
+  const p1 = await phoneOnBuild(url, noon);
+  assert((await p1.textContent("#verNum")) === host2.BUILD_A, "the first session runs the first build", await p1.textContent("#verNum"));
+  await p1.context().close();
+  host2.deploy();
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p2 = await ctx2.newPage();
+  p2.on("pageerror", (e) => errors.push(e.message));
+  await p2.clock.install({ time: new Date(noon) });
+  let navs = 0;
+  p2.on("framenavigated", (frame) => { if (frame === p2.mainFrame()) navs++; });
+  await p2.goto(url);
+  await p2.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await p2.evaluate(() => navigator.serviceWorker.controller))) await p2.reload();
+  await until(async () => !!(await p2.evaluate(() => navigator.serviceWorker.controller)), "the cold launch is under the worker");
+  await until(async () => (await p2.textContent("#verNum")) === host2.BUILD_B, "one quiet reload lands on the second build", 25000);
+  assert(navs <= 2, "at most one reload after the first navigation", navs);
+  assert(!(await rowShown(p2)), "no LOAD line after a quiet cold launch");
+  host2.close();
+  await ctx2.close();
+});
+
+/* The floor draft lives in memory. A cold launch restores one that was stashed, then decides.
+   Auto-apply must offer LOAD instead of reloading, or the number is gone. */
+await block("a cold launch with a draft typed and a new worker waiting shows the LOAD offer and does not reload", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  let session;
+  try {
+    session = await holdWaitingWorker(host2, () => host2.deployWorker());
+    const cold = await openCold(session.ctx, host2.url(), NOON_ET, { "now.walker.rescue": JSON.stringify({ draft: { energy: 3 } }) });
+    const p = cold.page;
+    await until(async () => await rowShown(p) && await p.isVisible("#updGo"), "LOAD is offered on the cold launch", 25000);
+    assert(/New build ready/.test(await p.textContent("#updText")) && !/held until/.test(await p.textContent("#updText")), "the line offers the build", await p.textContent("#updText"));
+    await realSleep(2500);
+    assert(cold.navs() === 1, "the cold launch did not reload", cold.navs());
+    assert((await p.textContent("#verNum")) === host2.BUILD_A, "the page is still the first build", await p.textContent("#verNum"));
+    await tab(p, "floor");
+    assert(await p.locator('.seg[data-k=energy] span[data-n="3"].on').count() === 1, "the draft is still on the floor");
+  } finally {
+    host2.close();
+    if (session) await session.ctx.close();
+  }
+});
+
+/* 03:00 ET, injected the same way as the open-page dark block. The worker is already waiting.
+   The line holds and the button stays hidden, and the document is not reloaded. */
+await block("a cold launch inside 02:00 to 06:00 ET holds and does not reload", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  let session;
+  try {
+    session = await holdWaitingWorker(host2, () => host2.deployWorker());
+    const cold = await openCold(session.ctx, host2.url(), DARK_ET);
+    const p = cold.page;
+    await until(async () => /held until 06:00 ET/.test(await p.textContent("#updText") || ""), "the line holds the build", 25000);
+    assert(await rowShown(p), "the hold is on screen");
+    assert(!(await p.isVisible("#updGo")), "nothing is asked inside the dark window");
+    await realSleep(2500);
+    assert(cold.navs() === 1, "the cold launch did not reload", cold.navs());
+    assert((await p.textContent("#verNum")) === host2.BUILD_A, "the page is still the first build", await p.textContent("#verNum"));
+  } finally {
+    host2.close();
+    if (session) await session.ctx.close();
+  }
+});
+
+/* A card answer is saved on the phone before it is sent. A quiet reload must leave it pending,
+   and the next sync must still deliver it. */
+await block("a cold launch with a pending answer auto-applies, the answer stays pending, and it is sent afterwards", async () => {
+  const d = await startMockDoor({ key: "k-pend-answer" });
+  d.put({ id: "c-pend-1", kind: "WORD", text: "Keep the pending answer?", options: ["Yes", "No"], recommend: "Yes" });
+  const at = "2026-09-24T15:30:00.000Z";
+  const storeJson = JSON.stringify({
+    v: 1, starts: {}, gone: {}, floor: {}, receipts: {}, counters: {}, brief: null, boxed: null,
+    cards: { "c-pend-1": { id: "c-pend-1", text: "Keep the pending answer?", recommend: "Yes", options: ["Yes", "No"], because: "", kind: "WORD", at: at, ttl_h: 48, answered: { choice: "Yes", at: at, sent: false }, later: false } },
+    outbox: [{ id: "ans_c-pend-1", op: "card_answer", at: at, body: { card_id: "c-pend-1", choice: "Yes" }, tries: 0 }],
+    sync: { stamp: "0", pulled_at: null, pushed_at: null, err_in: null, err_out: null, err_in_at: null, err_out_at: null, err_in_hint: null, err_out_hint: null, ops: [], door: null },
+  });
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  let session;
+  try {
+    session = await holdWaitingWorker(host2, () => host2.deploy());
+    const cold = await openCold(session.ctx, host2.url(), NOON_ET, { "now.store.v1": storeJson });
+    const p = cold.page;
+    await until(async () => cold.navs() >= 2 && (await p.textContent("#verNum")) === host2.BUILD_B, "the quiet reload landed on the second build", 25000);
+    await realSleep(500);
+    assert(cold.navs() === 2, "auto-apply reloaded once", cold.navs());
+    assert(!(await rowShown(p)), "no LOAD line after the quiet reload");
+    await session.held.close();
+    const mid = await store(p);
+    const card = mid && mid.cards && mid.cards["c-pend-1"];
+    const env = mid && mid.outbox && mid.outbox.find((e) => e.op === "card_answer");
+    assert(card && card.answered && card.answered.choice === "Yes" && card.answered.sent === false, "the answer is still pending after the reload", card && card.answered);
+    assert(env && env.body && env.body.card_id === "c-pend-1" && env.body.choice === "Yes", "the outbox still holds the answer", env && env.body);
+    await tab(p, "cards");
+    assert(/waiting/.test(await p.textContent("#decidedList")), "the card still says waiting", await p.textContent("#decidedList"));
+    await setDoor(p, d.url, d.key);
+    await until(() => d.state.cards.some((c) => c.id === "c-pend-1" && c.answered && c.answered.choice === "Yes"), "the pending answer was sent", 9000);
+    await until(async () => {
+      const s = await store(p);
+      return s.cards["c-pend-1"] && s.cards["c-pend-1"].answered && s.cards["c-pend-1"].answered.sent === true && !s.outbox.some((e) => e.op === "card_answer");
+    }, "the phone marks it sent and the outbox lets it go");
+  } finally {
+    host2.close();
+    if (session) await session.ctx.close();
+    await d.close();
+  }
+});
+
 await block("an open UNDO window withholds LOAD until the three seconds are up", async () => {
   const host2 = openTwoBuildHost();
   await host2.listen();

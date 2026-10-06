@@ -829,6 +829,19 @@ function finishSuite() {
     check("SW", "the browser's check for a new build is never answered by the worker", got.called === false && caches.matches.length === 0 && caches.puts.length === 0, { called: got.called, matches: caches.matches.length, puts: caches.puts.length });
   }
 
+  /* ---------- KEYHINT: a Google API key shape in the door field is hinted, never refused ---------- */
+  {
+    const doorKey43 = "k-" + "x".repeat(41);
+    const aiKey = "AIza" + "Y".repeat(35);
+    const aqKey = "AQ." + "Z".repeat(20);
+    check("KEYHINT", "AIza… gives the save hint", CORE.doorKeyGoogleSaveToast(aiKey) && CORE.doorKeyGoogleSaveToast(aiKey).includes("Google API key"));
+    check("KEYHINT", "AQ.… gives the save hint", CORE.doorKeyGoogleSaveToast(aqKey) && CORE.doorKeyGoogleSaveToast(aqKey).includes("Google API key"));
+    check("KEYHINT", "a 43-character random key gives none", CORE.doorKeyGoogleSaveToast(doorKey43) === null, CORE.doorKeyGoogleSaveToast(doorKey43));
+    check("KEYHINT", "the empty string gives none", CORE.doorKeyGoogleSaveToast("") === null);
+    check("KEYHINT", "the toast text never contains the key", !CORE.doorKeyGoogleSaveToast(aiKey).includes("YYYY"));
+    check("KEYHINT", "unauthorized sync note names the Google shape", CORE.doorKeyGoogleSyncNote(aiKey).includes("Google API key"));
+  }
+
   /* ---------- UPDATE: how a home-screen walker learns a new build exists ----------
      CORE.startShellUpdates takes everything it touches as arguments, so four listener fakes stand in
      for the browser and none of this needs a page, a DOM or storage. The page-side wiring itself is
@@ -1000,7 +1013,11 @@ function finishSuite() {
       const doc = target({ visibilityState: "visible" });
       const win = target({});
       const loc = spot(o.protocol, o.hostname);
-      const h = CORE.startShellUpdates({ navigator: { serviceWorker: sw }, location: loc, document: doc, window: win, build: o.build, MessageChannel: o.MessageChannel || FakeChannel, tagWaitMs: o.tagWaitMs, applyWaitMs: o.applyWaitMs }, () => { st.offers++; });
+      const h = CORE.startShellUpdates({
+        navigator: { serviceWorker: sw }, location: loc, document: doc, window: win, build: o.build,
+        MessageChannel: o.MessageChannel || FakeChannel, tagWaitMs: o.tagWaitMs, applyWaitMs: o.applyWaitMs,
+        typed: o.typed, undoBusy: o.undoBusy, now: o.now,
+      }, () => { st.offers++; });
       return Object.assign(st, { reg: reg, sw: sw, doc: doc, win: win, loc: loc, h: h });
     }
 
@@ -1096,22 +1113,22 @@ function finishSuite() {
        (Which field carries the tag is the fix's choice — a {type:"TAG"} reply, the scriptURL, the fetched
        bytes. These fakes name it `workerTag` on the decision and `tag` on the worker; move them with it.) */
     check("UPDATE", "the running page's BUILD equals the new worker's TAG — no offer, however the controller moved",
-      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.7" }) === false &&
-      CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.7" }) === false &&
-      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.6", workerTag: "1.1.7" }) === true &&
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.8", workerTag: "1.1.8" }) === false &&
+      CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.8", workerTag: "1.1.8" }) === false &&
+      CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.8" }) === true &&
       CORE.shouldOfferReload({ hadController: true, controllerChanged: true }) === true,
       {
-        equal_controllerchange: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.7" }),
-        equal_installed: CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.7" }),
-        stale_offers: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.6", workerTag: "1.1.7" }),
+        equal_controllerchange: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.8", workerTag: "1.1.8" }),
+        equal_installed: CORE.shouldOfferReload({ hadController: true, workerState: "installed", pageBuild: "1.1.8", workerTag: "1.1.8" }),
+        stale_offers: CORE.shouldOfferReload({ hadController: true, controllerChanged: true, pageBuild: "1.1.7", workerTag: "1.1.8" }),
         unknown_offers: CORE.shouldOfferReload({ hadController: true, controllerChanged: true }),
       });
     {
       /* The same thing as the sequence a real deploy actually runs, end to end through the mount:
          old worker controlling, page already the new build, new worker installs and claims. */
-      const m = mount({ build: "1.1.7" });
+      const m = mount({ build: "1.1.8" });
       await tick();
-      const w = target({ state: "installing", tag: "1.1.7" });
+      const w = target({ state: "installing", tag: "1.1.8" });
       m.reg.installing = w;
       m.reg.emit("updatefound");
       w.state = "installed";
@@ -1123,15 +1140,32 @@ function finishSuite() {
     {
       /* The counterpart, so the check above cannot pass by never offering: a page left open across a
          deploy is genuinely stale, and that is the case the LOAD line exists for. */
-      const m = mount({ build: "1.1.6" });
+      const m = mount({ build: "1.1.7" });
       await tick();
-      const w = target({ state: "installing", tag: "1.1.7" });
+      const w = target({ state: "installing", tag: "1.1.8" });
       m.reg.installing = w;
       m.reg.emit("updatefound");
       w.state = "installed";
       w.emit("statechange");
       await ticks(3);
       check("UPDATE", "a page left open across a deploy is stale and does get the one offer", m.offers === 1, m.offers);
+    }
+
+    check("UPDATE", "quiet auto-apply: cold launch with nothing typed and a waiting worker",
+      CORE.shouldAutoApplyShellUpdate({ coldLaunch: true, typed: {}, now: at("2026-09-24T16:00:00Z"), undoBusy: false }) &&
+      CORE.shouldQuietShellActivate({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.8" }));
+    check("UPDATE", "quiet auto-apply: something typed blocks auto-apply",
+      !CORE.shouldAutoApplyShellUpdate({ coldLaunch: true, typed: { box: "words" }, now: at("2026-09-24T16:00:00Z"), undoBusy: false }));
+    check("UPDATE", "quiet auto-apply: the dark window blocks auto-apply",
+      !CORE.shouldAutoApplyShellUpdate({ coldLaunch: true, typed: {}, now: at("2026-09-24T06:00:00Z"), undoBusy: false }));
+    check("UPDATE", "quiet auto-apply: warm resume is not cold launch",
+      !CORE.shouldAutoApplyShellUpdate({ coldLaunch: false, typed: {}, now: at("2026-09-24T16:00:00Z"), undoBusy: false }));
+    {
+      const waiting = answersTag("installed", "1.1.8");
+      const m = mount({ build: "1.1.7", waiting: waiting, typed: () => ({}), undoBusy: () => false, now: () => at("2026-09-24T16:00:00Z"), tagWaitMs: 0, applyWaitMs: 0 });
+      await ticks(4);
+      m.h.stop();
+      check("UPDATE", "cold launch with a waiting worker auto-applies instead of offering LOAD", m.loc.reloads === 1 && m.offers === 0, { reloads: m.loc.reloads, offers: m.offers });
     }
 
     /* ---- how the tag is actually learned: a message, bounded, and never a silent failure ----
