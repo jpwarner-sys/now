@@ -1208,6 +1208,45 @@ await block("03:00 ET the new build is held and the LOAD button is withheld unti
 });
 
 /* An open UNDO window is the one piece of state a reload would make permanent. The button waits. */
+await block("saving an AIza-shaped key shows the hint and still stores the key", async () => {
+  const d = await startMockDoor({ key: "live-test-key" });
+  const shaped = "AIza" + "Q".repeat(35);
+  const { page: p } = await phone({ "now.door_url": d.url });
+  await setDoor(p, d.url, shaped);
+  await until(async () => /Google API key/.test(await toastText(p)), "hint toast");
+  const shown = await toastText(p);
+  assert(!shown.includes("QQQQ"), "the toast never contains the key", shown);
+  const stored = await p.evaluate(() => localStorage.getItem("now.door_key"));
+  assert(stored === shaped, "the key is still saved on this phone", stored);
+  await p.context().close(); await d.close();
+});
+
+await block("a cold launch with nothing typed auto-loads a waiting second build in one reload", async () => {
+  const host2 = openTwoBuildHost();
+  await host2.listen();
+  const url = host2.url();
+  const noon = "2026-09-24T16:00:00Z";
+  const p1 = await phoneOnBuild(url, noon);
+  assert((await p1.textContent("#verNum")) === host2.BUILD_A, "the first session runs the first build", await p1.textContent("#verNum"));
+  await p1.context().close();
+  host2.deploy();
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p2 = await ctx2.newPage();
+  p2.on("pageerror", (e) => errors.push(e.message));
+  await p2.clock.install({ time: new Date(noon) });
+  let navs = 0;
+  p2.on("framenavigated", (frame) => { if (frame === p2.mainFrame()) navs++; });
+  await p2.goto(url);
+  await p2.evaluate(() => navigator.serviceWorker.ready);
+  if (!(await p2.evaluate(() => navigator.serviceWorker.controller))) await p2.reload();
+  await until(async () => !!(await p2.evaluate(() => navigator.serviceWorker.controller)), "the cold launch is under the worker");
+  await until(async () => (await p2.textContent("#verNum")) === host2.BUILD_B, "one quiet reload lands on the second build", 25000);
+  assert(navs <= 2, "at most one reload after the first navigation", navs);
+  assert(!(await rowShown(p2)), "no LOAD line after a quiet cold launch");
+  host2.close();
+  await ctx2.close();
+});
+
 await block("an open UNDO window withholds LOAD until the three seconds are up", async () => {
   const host2 = openTwoBuildHost();
   await host2.listen();
