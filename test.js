@@ -1151,9 +1151,10 @@ function finishSuite() {
       check("UPDATE", "a page left open across a deploy is stale and does get the one offer", m.offers === 1, m.offers);
     }
 
-    check("UPDATE", "quiet auto-apply: cold launch with nothing typed and a waiting worker",
+    check("UPDATE", "a newer waiting worker is not taken quietly — only a worker already on this build",
       CORE.shouldAutoApplyShellUpdate({ coldLaunch: true, typed: {}, now: at("2026-09-24T16:00:00Z"), undoBusy: false }) &&
-      CORE.shouldQuietShellActivate({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.8" }));
+      !CORE.shouldQuietShellActivate({ hadController: true, workerState: "installed", pageBuild: "1.1.7", workerTag: "1.1.8" }) &&
+      CORE.shouldQuietShellActivate({ hadController: true, workerState: "installed", pageBuild: "1.1.8", workerTag: "1.1.8" }));
     check("UPDATE", "quiet auto-apply: something typed blocks auto-apply",
       !CORE.shouldAutoApplyShellUpdate({ coldLaunch: true, typed: { box: "words" }, now: at("2026-09-24T16:00:00Z"), undoBusy: false }));
     check("UPDATE", "quiet auto-apply: the dark window blocks auto-apply",
@@ -1165,7 +1166,7 @@ function finishSuite() {
       const m = mount({ build: "1.1.7", waiting: waiting, typed: () => ({}), undoBusy: () => false, now: () => at("2026-09-24T16:00:00Z"), tagWaitMs: 0, applyWaitMs: 0 });
       await ticks(4);
       m.h.stop();
-      check("UPDATE", "cold launch with a waiting worker auto-applies instead of offering LOAD", m.loc.reloads === 1 && m.offers === 0, { reloads: m.loc.reloads, offers: m.offers });
+      check("UPDATE", "cold launch with a newer waiting worker offers the bar and does not reload on its own", m.loc.reloads === 0 && m.offers === 1, { reloads: m.loc.reloads, offers: m.offers });
     }
 
     /* ---- how the tag is actually learned: a message, bounded, and never a silent failure ----

@@ -13,7 +13,7 @@
 /* The browser installs a new worker only when THIS file's bytes change. With a fixed cache name a
    deploy that touched only index.html installed nothing, fired no event, and the phone kept the old
    build — so the tag is stamped by hand here and held equal to index.html's BUILD by the suite. */
-var TAG = "1.1.8";                      // bumped with BUILD in index.html; the suite holds them equal
+var TAG = "1.1.9";                      // bumped with BUILD in index.html; the suite holds them equal
 var PREFIX = "now-shell-";
 var CACHE = PREFIX + TAG;
 var SHELL = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
